@@ -1,0 +1,70 @@
+{
+    "save_op": -1,
+    "save_mesh":-1,
+    "update_plan":"neumman_ind_ipsr",
+    "estimator": {
+        "name": "SocketNormalEstimation",
+        "RandomInitConf": {
+            "name": "RandomInit",
+            "seed": 10
+        },
+        "DoingNothingConf": {
+            "name": "DoingNothing"
+        },
+        "Hoppe1994Conf":{
+            "name": "Hoppe1994",
+            "K":10,
+            "lambda":20,
+            "alpha":0.2
+        },
+
+        "FieldPropagationEstimateConf": {
+            "name": "FieldPropagationEstimate",
+            "r": 0.1,
+            "k_neighbors": 10,
+            "times": 5,
+            "knn_mask":1000,
+            "C":3,
+            "eps": 0,
+            "diffuse": true,
+            "pre_estimator":{
+                "name": "PclNormalEstimation",
+                "PclNormalEstimationConf":{
+                    "name": "PclNormalEstimation",
+                    "k":10
+                },
+                "Hoppe1994Conf":{
+                    "name": "Hoppe1994",
+                    "K":10,
+                    "lambda":20,
+                    "alpha":0.2
+                },
+                "PCAConf":{
+                    "name": "PCA",
+                    "k":10
+                }
+            }
+        },
+        
+        "SocketNormalEstimationConf": {
+            "name": "SocketNormalEstimation",
+            "function_name": "tree_xie_propagation",
+            "function_config": {
+                "annotaion1":"==========simple_estimate===============",
+                "diffuse": true,
+                "annotaion2":"==========graph_dipole_estimate===============",
+                "max_nn": 10,
+                "n_part": 10,
+                "min_patch": 100,
+                "k_neighbors": 10,
+                "mininum_rate": 0.2,
+                "divide_method": "ncut_partition",
+                "annotaion3":"==========xie_propagation===============",
+                "eps": 0.1,
+                "times": 5,
+                "knn_mask":-1,
+                "C":3
+            }
+        }
+    }
+}

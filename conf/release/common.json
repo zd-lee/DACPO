@@ -1,0 +1,53 @@
+{
+    "self_path": "D:/Documents/zhudoongli/CG/project/ipsr_explore/conf/default/",
+    "save_option": {
+        "cleaned_mesh": true,
+        "uncleaned_mesh": false,
+        "orientedpoint": true,
+        "GT_samples": false,
+        "ori_est": true,
+        "init_normal": false
+    },
+    "save_grid":false,
+    "PCA_refine": false,
+    "update_filter": {
+        "namelist": [
+            "NonZero"
+        ],
+        "config_table": {
+            "InitFilter": {
+                "name": "InitFilter",
+                "minthreshold": 80,
+                "maxthreshold": 100,
+                "estimator": {
+                    "name": "Hoppe1994",
+                    "Hoppe1994Conf": {
+                        "name": "Hoppe1994",
+                        "K": 10,
+                        "lambda": 20,
+                        "alpha": 0.2
+                    },
+                    "SocketNormalEstimationConf": {
+                        "name": "SocketNormalEstimation",
+                        "function_name": "simple_estimate",
+                        "function_config": {
+                            "diffuse": true
+                        }
+                    }
+                }
+            },
+            "NonZero": {
+                "name": "NonZero"
+            }
+        }
+    },
+    "estimator_server": {
+        "port": 12344,
+        "ip": "127.0.0.1"
+    },
+    "shrink_boundary_config": {
+        "start_iter": 5,
+        "K": 20
+    },
+    "no_save":false
+}

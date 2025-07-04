@@ -1,0 +1,184 @@
+{
+    "estimator": {
+        "name": "FieldPropagationEstimate",
+        "RandomInitConf": {
+            "name": "RandomInit",
+            "seed": 10
+        },
+        "DoingNothingConf": {
+            "name": "DoingNothing"
+        },
+        "Hoppe1994Conf":{
+            "name": "Hoppe1994",
+            "K":10,
+            "lambda":20,
+            "alpha":0.2
+        },
+
+        "FieldPropagationEstimateConf": {
+            "name": "FieldPropagationEstimate",
+            "r": 0.1,
+            "k_neighbors": 10,
+            "times": 5,
+            "knn_mask":1000,
+            "C":3,
+            "eps": 0,
+            "diffuse": true,
+            "pre_estimator":{
+                "name": "PclNormalEstimation",
+                "PclNormalEstimationConf":{
+                    "name": "PclNormalEstimation",
+                    "k":10
+                },
+                "Hoppe1994Conf":{
+                    "name": "Hoppe1994",
+                    "K":10,
+                    "lambda":20,
+                    "alpha":0.2
+                },
+                "PCAConf":{
+                    "name": "PCA",
+                    "k":10
+                }
+            }
+        },
+        
+        "SocketNormalEstimationConf": {
+            "name": "SocketNormalEstimation",
+            "function_name": "tree_xie_propagation",
+            "function_config": {
+                "annotaion1":"==========simple_estimate===============",
+                "diffuse": true,
+                "annotaion2":"==========graph_dipole_estimate===============",
+                "max_nn": 10,
+                "n_part": 10,
+                "min_patch": 100,
+                "k_neighbors": 10,
+                "mininum_rate": 0.2,
+                "divide_method": "ncut_partition",
+                "annotaion3":"==========xie_propagation===============",
+                "eps": 0.1,
+                "times": 5,
+                "knn_mask":-1,
+                "C":3
+            }
+        }
+    },
+    "refer_arg_flag": "it_20_dp_-1_nb_10_sd_10504_pt_10.000000",
+    "refer_arg_flag_describ": "直接使用其它参数已经计算好的segment res,仅测试翻转算法时使用",
+    "update_plan":"neumman_ind_ipsr",
+    "seg_sample_depth":10,
+    "seg_sample_depth_describ":"The depth of the segment sample. don't change it unless you know what you are doing.",
+    "edge_weight_calculator": {
+        "name": "consistency_calculator",
+
+        "consistency_calculator_config": {
+            "name":"consistency_calculator",
+            "measurement_type": "MaxAB",
+            "height": 400,
+            "vertex_getter": "get_dodecahedron_vertex",
+            "width": 400,
+            "projection_type": "orthographic",
+            "subdivision_times": 0
+        },
+        "overlap_diff_calculator": {
+            "name": "overlap_diff_calculator",
+            "use_op_confidence": false
+        },
+        "point_consistency_config":{
+            "radius": 100000
+        },
+        
+        "dipole_calculator_config": {
+            "name": "dipole_calculator",
+            "eps": 0.00001
+        },
+
+        "CoCalculator": {
+            "name": "CoCalculator",
+            "CoCalculator_config": {
+                "primary_calculator":{
+                    "name": "consistency_calculator",
+                    "consistency_calculator_config": {
+                        "height": 400,
+                        "vertex_getter": "get_dodecahedron_vertex",
+                        "width": 400
+                    },
+                    "dipole_calculator_config": {
+                        "name": "dipole_calculator",
+                        "eps": 0.00001
+                    }
+                },
+                "aid_calculator":{
+                    "name": "overlap_diff_calculator",
+                    "use_op_confidence": false
+                    
+                },
+                "gap": 0.1
+            }
+        }
+
+    },
+    "save_wrong_edge": false,
+    "save_all_edge": false,
+
+    "NodeAllocator": {
+        "name":"SeedGrowing",
+        "ip":"127.0.0.1",
+        "port":10010,
+        "method":{
+            "name":"bitree_cluster",
+            
+            "bitree_cluster_spconfig":{
+                "k_neighbors":10,
+                "mininum_rate":0.01
+            },
+            
+            "spectral_cluster_spconfig":{
+                "k_neighbors":10,
+                "mininum_rate":0.01,
+                "n_components":"auto"
+            }
+
+        },
+        "if_re_cluster":false
+    },
+
+    "static_conf":{
+        "SeedGrowing":{
+            "knn_graph":{
+                "k":10,
+                "radius":10
+            },
+            "expand_max_iter":5,
+            "seed_selection_alg_spconfig":{
+                "name":"k_selection",
+                "k":200
+            },
+            "small_cluster_filter":false
+        },
+        "linked_graph":{
+            "use_strength":false
+        },
+        "graph_edge":{
+            "overlap_treshold":10
+        }
+    },
+
+
+    "FlipArgName": "VoteFlip",
+    "FlipArgConf":{
+        "MIQPFlip":{
+            "name" : "MIQPFlip",
+            "ip" : "192.168.192.115",
+            "port" : 11111
+        },
+        "VoteFlip":{
+            "name" : "VoteFlip",
+            "times" : 9,
+            "base_alg" :{
+                "name" : "ForestFlip"
+            }
+        }
+    }
+}

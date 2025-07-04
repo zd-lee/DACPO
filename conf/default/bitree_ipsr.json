@@ -1,0 +1,33 @@
+{
+    "update_plan":"neumman_ind_ipsr",
+    "num_iter_after_reinit": 30,
+    "if_mod_10":false,
+    "spilter_config":{
+        "spilt_threshold": 2000,
+        "son_threshold": 500,
+        "max_depth": 10
+    },
+    "estimator": {
+        "name": "SocketNormalEstimation",
+        "RandomInitConf": {
+            "name": "RandomInit",
+            "seed": 0
+        },
+        "DoingNothingConf": {
+            "name": "DoingNothing"
+        },
+        "Hoppe1994Conf":{
+            "name": "Hoppe1994",
+            "K":10,
+            "lambda":20,
+            "alpha":0.2
+        },
+        "SocketNormalEstimationConf": {
+            "name": "SocketNormalEstimation",
+            "function_name": "simple_estimate",
+            "function_config": {
+                "diffuse": true
+            }
+        }
+    }
+}

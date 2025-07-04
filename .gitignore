@@ -1,0 +1,112 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Clion
+.idea
+cmake-build-*
+
+# QtCreator
+CMakeLists.txt.user
+
+# VS Code
+.vscode
+
+#Build dir
+/_build
+/samples/integration_test/_build
+
+# CMake
+CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
+
+# Misc
+*.log
+*.pot
+*.potx
+*.potm
+*.po
+*.po~
+*.swp
+*.tmp
+*.tmp.*
+*.tmp*
+*.old
+*.bak
+*.cache
+*.diff
+*.patch
+
+# python
+*.pyc
+*.pyo
+*.pyd
+__pycache__
+
+# Visual Studio
+*.user
+
+# data
+/data/out
+/data
+/ipsr_scripts/min_cut/data
+/ipsr_scripts/tps/*.ply
+/ipsr_scripts/*.ply
+
+Debug
+Release
+log
+x64
+
+.vs
+.vs/*
+.vs/*/*
+
+ipsr_scripts/Mask3Ddemo/*
+
+# 将已经add的文件从git中删除(不删除物理文件)
+ipsr_scripts
+tempuse
+tempuse2
+R2
+Release
+Debug
+R_no_od
+
+conf/temp_config
+!conf/release
+
+DACPO.*
+packages
+vcpkg
+
