@@ -12,6 +12,7 @@ This paper is published at ACM Transactions on Graphics (SIGGRAPH 2025). Please 
 - 64GB RAM
 
 ### Dependencies
+#### For DACPO main project
 - pcl
 - open3d
 - Eigen
@@ -28,7 +29,7 @@ Install using vcpkg.
 After executing `vcpkg integrate project`, you will see a prompt:
 
 > With a project open, go to Tools->NuGet Package Manager->Package Manager Console and paste:
-> Install-Package "vcpkg.D.sdk.vcpkg" -Source "C:\Users\19892"
+> Install-Package "vcpkg.D.sdk.vcpkg" -Source "{your vcpkg path}"
 
 Follow the instructions as prompted.
 
@@ -65,9 +66,28 @@ Install using vcpkg:
 `vcpkg integrate project`
 
 
-**5. Configure Header and Library Paths**
+**Build with CMake**
 
-In all configurations, set the VC++ directory include paths:
+after installing the dependencies, you can build the solution by using the following steps.
+
+1. **Create build directory:**
+```bash
+mkdir build
+
+cd build
+
+# Using vcpkg toolchain (recommended)
+cmake .. -DCMAKE_TOOLCHAIN_FILE=[path_to_vcpkg]/scripts/buildsystems/vcpkg.cmake
+
+# Or use system default
+cmake ..
+```
+
+
+
+**Configure Header and Library Paths**
+
+In all configurations for DACPO main project, set the VC++ directory include paths:
 
 ```
 include:
@@ -75,24 +95,47 @@ src/include
 src/include/3dparty
 ```
 
-### Build with CMake
-
-If you prefer to use CMake instead of Visual Studio, you can use the provided CMakeLists.txt:
-
-1. **Create build directory:**
-```bash
-mkdir build
-cd build
+#### 0-1 Integer Optimization API
+since DACPO use gurobi to solve the 0-1 integer optimization problem, you need to start a gurobi service before running the code.
+```
+cd graphical_model
+pip install -r requirements.txt
+python socket_server_para.py
+```
+if you see the following prompt, the gurobi service is running.
+```
+start comb server
+Server listening on 0.0.0.0:11111
 ```
 
-2. **Configure the project:**
-```bash
-# Using vcpkg toolchain (recommended)
-cmake .. -DCMAKE_TOOLCHAIN_FILE=[path_to_vcpkg]/scripts/buildsystems/vcpkg.cmake
 
-# Or use system default
-cmake ..
+
+
+
+### Usage
+>note: before running the code, you need to start the gurobi service following the instructions in the [0-1 Integer Optimization API](#0-1-integer-optimization-api) section.
+
 ```
+{Path to DACPO.exe} --in {scene name} --iters 0 --depth 10 --neighbors 10 --seed 10 --input_data_root {Path to your scene folder} --ipsr_type 2 --config_folder {Path to conf}
+```
+Usage:
+--in: scene name
+
+--iters: number of iterations
+
+--depth: depth of octree downsampling in each block.-1 means no downsampling
+
+--neighbors: number of neighbors in knn graph
+
+--seed: random seed
+
+--input_data_root: path to scene folder
+
+--ipsr_type: 0: ipsr the whole scene, 2: ipsr each block
+
+--config_folder: path to conf folder, please use /conf/default
+
+
 
 
 ### Dataset
@@ -104,8 +147,6 @@ please refer to [ScanNet](https://github.com/ScanNet/ScanNet)
 
 #### SceneNN
 please refer to [SceneNN](https://github.com/zhaoyu-zhao/SceneNN)
-
-
 
 
 ### Citation
