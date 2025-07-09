@@ -96,7 +96,7 @@ src/include/3dparty
 ```
 
 #### 0-1 Integer Optimization API
-since DACPO use gurobi to solve the 0-1 integer optimization problem, you need to start a gurobi service before running the code.
+since DACPO uses gurobi to solve the 0-1 integer optimization problem, you need to start a gurobi service before running the code.
 ```
 cd graphical_model
 pip install -r requirements.txt
