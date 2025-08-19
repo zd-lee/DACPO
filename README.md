@@ -148,6 +148,13 @@ please refer to [ScanNet](https://github.com/ScanNet/ScanNet)
 #### SceneNN
 please refer to [SceneNN](https://github.com/zhaoyu-zhao/SceneNN)
 
+### Result on watertight-model
+
+![image-20250819151252041](README.assets/image-20250819151252041.png)
+
+Our method can also apply on watertight pointcloud model.
+
+
 
 ### Citation
 
