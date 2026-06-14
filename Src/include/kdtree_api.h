@@ -1,7 +1,7 @@
 #include <kdtree.h>
 #include <tools>
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class BasicKDTree{
     virtual int build(const std::vector<Point<REAL, DIM>>& points) = 0;
     virtual int build(const ORIENTED_POINTS& ops) = 0;
@@ -10,7 +10,7 @@ class BasicKDTree{
     virtual std::vector<int> radius_search_with_klimit(const Point<REAL, DIM>& query, REAL radius, int k) = 0;
 };
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class ktdKDTree : public BasicKDTree<REAL, DIM>{
     kdt::KDTree<REAL, DIM> _kdt;
     kdt::KDTreePoint tokdtPoint(const Point<REAL,DIM> p){

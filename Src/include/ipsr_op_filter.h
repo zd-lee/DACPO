@@ -3,20 +3,16 @@
 
 /**
  * @brief 
- * 判断是否更新某个点
  */
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class Update_filter {
 public:
-    // 请使用And
     virtual std::vector<int> if_update(const std::vector<Normal<REAL, DIM>>& project_normal) = 0;
     virtual nlohmann::json get_config() = 0;
 
     /**
      * @brief 
-     * @param update_flag 原本的更新flag 
      * @param project_normal 
-     * @return int 本次被拒绝的点的数量
      */
     int And(std::vector<int>& update_flag,const std::vector<Normal<REAL, DIM>>& project_normal){
         std::vector<int> new_update_flag = if_update(project_normal);
@@ -31,7 +27,7 @@ public:
     }
 };
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class NonZeroFilter : public Update_filter<REAL, DIM> {
     nlohmann::json _config_j;
     nlohmann::json _log_j;
@@ -64,9 +60,8 @@ public:
 
 /**
  * @brief 
- * 对于与init结果的差距大于minthreshold且小于maxthreshold的点,拒绝更新
  */
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class InitFilter : public Update_filter<REAL, DIM> {
     ORIENTED_POINTS init_res;
     nlohmann::json _config_j;
@@ -94,7 +89,6 @@ public:
         _config_j["estimator"] = estimator->get_config();
 	}
 
-    // 直接使用现成的initop
     InitFilter(ORIENTED_POINTS& inited_op, REAL minthreshold, REAL maxthreshold) {
         init_res = inited_op;
         minthreshold = minthreshold;

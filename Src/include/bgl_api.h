@@ -4,7 +4,6 @@
  * @LastEditors: ZHUODONG LI 1989218453@qq.com
  * @LastEditTime: 2025-06-25 00:37:22
  * @FilePath: \ipsr_explore\Src\include\bgl_api.h
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 #pragma once
 #include <vector>
@@ -34,7 +33,7 @@ namespace bgl_api{
     typedef boost::property_traits< weight_map_type >::value_type weight_type;
 
 
-    typedef std::vector<std::vector<int>> UGRAPH;// 无向图 0表示无边
+    typedef std::vector<std::vector<int>> UGRAPH;
     typedef int VecType;
     struct edge_t
     {
@@ -42,7 +41,6 @@ namespace bgl_api{
         VecType second;
     };
 
-    // 适用于bgl的边集
     template<typename weight_type>
     struct EdgeSet {
         std::vector<edge_t> edge;
@@ -53,9 +51,6 @@ namespace bgl_api{
     
     /**
      * @brief 
-     * 对input_graph进行切分
-     * @param input_graph 无向图，input_graph[i][j] == 0表示ij之间无边
-     * @return 切掉的边
      */
     std::vector<std::pair<VecType,VecType>> bgl_stoer_wanger_mincut(const UGRAPH& input_graph); 
 

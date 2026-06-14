@@ -1,26 +1,27 @@
 #pragma once
-#define _UNSERTAIN //对于一些不确定的地方，使用assert进行检查
 #include <IPSR.h>
 #include <ipsr_controller.h>
-#include "3dparty\nlohmann\json.hpp"
+#include "3dparty/nlohmann/json.hpp"
 #include <AuxAlg.h>
 #include <dipole.h>
+#include <filesystem>
 
 
-extern nlohmann::json global_var::config_j;// 控制参数
-extern nlohmann::json global_var::metric_j;// 效果、日志等
+extern nlohmann::json global_var::config_j;
+extern nlohmann::json global_var::metric_j;
 
 namespace GRAPH_IPSR {
 
+	extern nlohmann::json static_conf;
+
 /*********************************************GRAPH**********************************************************/
-	// ipsr_handle 立方体
 	template<typename T>
 	using T_CUBE = std::vector<std::vector<std::vector<T>>>;
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	using IPSR_CUBE = T_CUBE<IPSR_HANDLE_P>;
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	using OP_CUBE = T_CUBE<POINTS_NORMALS>;
 
 	template<typename T>
@@ -34,25 +35,22 @@ namespace GRAPH_IPSR {
 		}
 	}
 	
-	// 顶点。每个顶点指向一个ipsr对象。
-	// 后续可能会加入置信度等属性
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class graph_vertex {
 	private:
-		std::vector<std::vector<float>> _diff_log;// _op中每个在_points_normals中的点的diff的log
-		std::vector<int> _op_idx;//_op中的点在_handle->_points_normals中的索引
+		std::vector<std::vector<float>> _diff_log;
+		std::vector<int> _op_idx;
 		bool init_flag = false;
-		int inv_times = 0;//翻转的次数
+		int inv_times = 0;
 
-		std::pair<REAL, REAL> _loss_according2gt;// first为inv_times == 0时的loss; second为inv_times == 1 时的loss
+		std::pair<REAL, REAL> _loss_according2gt;
 
-		lzd_tools::thread_safe_bool __is_changed;// 在_cal_weigth后是否再发生过改变
+		lzd_tools::thread_safe_bool __is_changed;
 
 		void init() {
 			assert(init_flag == false);
 			init_flag = true;
 			assert(_handle != NULL);
-			// _handle->ixform 应该是一个只有平移或者放缩的变换 不应该有旋转
 			std::vector<std::pair<int, int>> checkidx = {
 				{0,1},{0,2},{1,2}
 			};
@@ -66,21 +64,16 @@ namespace GRAPH_IPSR {
 			__is_changed.set(true);
 		}
 
-		// 求单个点的未归一化的置信度，方式为取最后五次var的总和sum以及均值avg，若sum不为零，则置信度为1/avg
-		// 对于var很小的点，其置信度为1/0.01
 		float _cal_confidence_by_var(std::vector<float> var){
-			//assert(var.size());
 			float sum = 0.0f;
 			for(int i = var.size() - 1;i>=0&&i>= var.size()-5;i--){
 				sum += var[i];
 			}
-			//if(sum == 0) assert(0);
 			float avg = sum / std::min(5,(int)var.size());
-			avg = max(1e-9f,avg);//防止除0,或者avg过小，导致某个点的置信度过大 FIX_ME diff的大小与点云大小有关
+			avg = std::max(1e-9f,avg);
 			avg = 1.0 / avg;
-			// 取对数
 			avg = log(avg);
-			avg = max(0.0f,avg);
+			avg = std::max(0.0f,avg);
 			return avg;
 		}
 
@@ -89,22 +82,17 @@ namespace GRAPH_IPSR {
 	public:
 		
 		//enum GraphVertexOPType {
-		//	SELF,//自身部分
-		//	// 此处不需要区分与不同vertex的重合部分 
-		//	OVERLAP //与其他Vertex重合部分。
 		//};
 		IPSR_HANDLE_P _handle;
-		std::vector<int> _op_type;//_op中每个点的类型 0表示来自grid，1表示来自邻居grid
-		POINTS_NORMALS _op;// 顶点对应的有向点云。注意这个点云与_handle->_points_normals中的点不一致，后者经过变换以及下采样
-		std::vector<float> _op_confidence;//_op中的点的置信度
+		std::vector<int> _op_type;
+		POINTS_NORMALS _op;
+		std::vector<float> _op_confidence;
 		Point<REAL, DIM> center_op;
 
-		// 节点相较于最开始时的翻转状态
 		bool is_inved(){
 			return inv_times % 2;
 		}	
 
-		// 与gt相比的翻转状态,返回true表示与gt相同，1表示与gt相反
 		int inved_status_according2gt(){
 			auto loss_pair = _cal_loss();
 			return loss_pair.first <= loss_pair.second;
@@ -129,7 +117,6 @@ namespace GRAPH_IPSR {
 			return flag;
 		}
 
-		// 计算碎片中,每个op的置信度
 		void cal_conf() {
 			float max_confidence = 0;
 			_op_confidence.clear();
@@ -137,25 +124,22 @@ namespace GRAPH_IPSR {
 				_op_confidence.push_back(_cal_confidence_by_var(_diff_log[i]));
 				if (_op_confidence[i] > max_confidence) max_confidence = _op_confidence[i];
 			}
-			// 归一化置信度
 			for (int i = 0; i < _op.size(); i++) {
 				_op_confidence[i] /= max_confidence;
 			}
 		}
 
-		// 计算碎片整体置信度
 		REAL get_vertex_conf() {
 			if (_handle->avg_max_var_log.size() > 0) {
 				REAL w = _handle->avg_max_var_log.back();
 				assert(w >= 0);
-				w = max(w,1e-3); // 如果diff=0,近似认为其有微量的更新(防止除零)
+				w = std::max(w,1e-3);
 				return (1 / w);
 			}
 			else return 0;
 		}
 
 
-		//更新 _handle->_points_normals => _op
 		void update2op() {
 			if (!init_flag) {
 				init();
@@ -177,16 +161,12 @@ namespace GRAPH_IPSR {
 		}
 
 
-		// 返回op_type为0的点的个数
 		int cnt() {
 			return std::count(_op_type.begin(), _op_type.end(), 0);
 		}
 
 		/**
 		 * @brief 
-		 * 计算小块的loss (需要有gt)
-		 * 由于这个函数可能在不同阶段被调用，所以每次调用都需要重新计算
-		 * @return std::pair<REAL,REAL> first表示小块当前与gt的loss;inv_loss表示如果翻转一次,所形成的新小块的loss的值 
 		 */
 		std::pair<REAL,REAL> _cal_loss(){
 			if (!__is_changed.get()) {
@@ -229,11 +209,6 @@ namespace GRAPH_IPSR {
 			_handle = NULL;
 			init_flag = false;
 		}
-		// graph_vertex(IPSR_HANDLE_P hp, std::vector<int> op_type, POINTS_NORMALS ori_op):_handle(hp),_op_type(op_type),_op(ori_op){
-		// 	init();
-		// }
-
-		// 计算_op中_op_type为0的点的metric
 		lzd_tools::PointNormalMetric<REAL,DIM> cal_metric(){
 			POINTS_NORMALS gt = get_self_gt();
 			POINTS_NORMALS op = get_self_op();
@@ -253,7 +228,7 @@ namespace GRAPH_IPSR {
 
 		nlohmann::json to_json(){
 			nlohmann::json j;
-			j["id"] = -1; //需要在graph 的to_json中重新赋值
+			j["id"] = -1;
 			Point<REAL, DIM> center;
 			for(int i = 0;i<_op.size();i++){
 				center += _op[i].first;
@@ -265,7 +240,6 @@ namespace GRAPH_IPSR {
 			return j;
 		}
 
-		// 返回_op中_op_type为0的点	
 		POINTS_NORMALS get_self_op(){
 			POINTS_NORMALS res;
 			for(int i = 0;i<_op.size();i++){
@@ -287,7 +261,6 @@ namespace GRAPH_IPSR {
 			return res;
 		}
 
-		// 返回_op中_op_type为0的点对应的gt
 		POINTS_NORMALS get_self_gt(){
 			POINTS_NORMALS res;
 			for(int i = 0;i<_op.size();i++){
@@ -314,39 +287,29 @@ namespace GRAPH_IPSR {
 	};
 	
 
-	// 有向边。
-	// start、end都是指向VERTEX的指针
-	// 后续可能会增加overlap等属性
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class graph_edge {
-		REAL weight;// 权重
-		REAL inv_weight;// 翻转一个节点后的权重。TODO
-		int cal_times = 0;// 计算权重的次数 确保权重只计算一次
-		REAL length;// 边的长度,即两个顶点的center_op的距离
+		REAL weight;
+		REAL inv_weight;
+		int cal_times = 0;
+		REAL length;
 		
-		REAL _confidence = 1; // 权重的置信度
-		REAL _connection_strength = 1.0;// 边的强度。越高说明两个块之间的连接越强。使用边界点的数量作为边的连接强度
+		REAL _confidence = 1;
+		REAL _connection_strength = 1.0;
 
 	public:
-		static int _overlap_treshold; // 大于该值的overlap部分才会被使用
+		static int _overlap_treshold;
 
 		graph_vertex<REAL, DIM>* start;
 		graph_vertex<REAL, DIM>* end;
-		// overlap部分在两个顶点的点云中的索引，overlap部分并不对称，只记录了start中来自end的点。
 		std::vector<std::pair<int, int>> overlap_idxs;
 
 		bool is_vaild() {
-			return (int)overlap_idxs.size() >= graph_edge::_overlap_treshold && _connection_strength > 0; // 注意connetcion_strength必须大于零，否则所有顶点都会被认为是相连的
-																									  // 但允许overlap_idxs等于零，因为可以不扩张
+			return (int)overlap_idxs.size() >= graph_edge::_overlap_treshold && _connection_strength > 0;
 		}
 
 		/**
 		 * @brief
-		 * 判断这个边是否是"误边"
-		 * 这个边是"误边"有两种情况:
-		 * 	1. weight<inv_weight, 但是start和end的翻转状态不一致
-		 * 	2. weight>=inv_weight, 但是start和end的翻转状态一致
-		 * 返回:true表示此边是一个"误边"
 		 */
 		bool is_wrong_edge() {
 			int ss = start->inved_status_according2gt(), se = end->inved_status_according2gt();
@@ -360,12 +323,8 @@ namespace GRAPH_IPSR {
 			return false;
 		}
 
-		// 获得权重的置信度
 		REAL get_brief() {
 			return _confidence;
-			//return std::sqrt(start->get_vertex_conf() * end->get_vertex_conf());
-			//return overlap_idxs.size() * (max(weight, inv_weight) - min(weight, inv_weight));
-			//return 1;
 		}
 
 		REAL get_connection_strength() { return _connection_strength; }
@@ -373,8 +332,6 @@ namespace GRAPH_IPSR {
 		void set_connection_strength(REAL strength) { _connection_strength = strength; }
 
 		/**
-		 * @brief 根据当前状态或者指定的状态，返回边的权重
-		 * @param status 用于指定两个顶点的翻转状态是否一致，1表示一致,0表示不一致，其他值表示不指定。如果不指定，则根据start和end当前的翻转状态来决定
 		 * @return std::pair<REAL, REAL> 
 		 */
 		std::pair<REAL, REAL> get_weight(int status = -1) {			
@@ -396,7 +353,6 @@ namespace GRAPH_IPSR {
 		}
 
 		/**
-		 * @brief 设置边的权重weight
 		 * @return REAL
 		 */
 		void set_weight(std::pair<REAL, REAL> weight, REAL confidence = 1) {
@@ -439,19 +395,19 @@ namespace GRAPH_IPSR {
 		}
 	};
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	using VERTEX = graph_vertex<REAL, DIM>;
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	using VERTEX_P = VERTEX<REAL, DIM>*;
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	using EDGE = graph_edge<REAL, DIM>;
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	using EDGE_P = EDGE<REAL, DIM>*;
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class edge_weight_calculator {
 	protected:
 		nlohmann::json caculate_res(const EDGE_P<REAL, DIM> edge){
@@ -470,25 +426,23 @@ namespace GRAPH_IPSR {
 	public:
 		virtual void cal_weight(const EDGE_P<REAL, DIM> edge,std::pair<REAL,REAL>& weight, REAL& conf) = 0;
 		virtual nlohmann::json get_config() = 0;
-		// 将判断可视化; 建议在判断错误的case中使用
 		virtual void visualization(const EDGE_P<REAL, DIM> edge,std::string floder) = 0;
 	};
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class linked_graph;
 
 	/**
 	 * @brief 
-	 * weight = overlap部分中 start中的点与end中的点的平均角度差 * 两点的置信度的乘积
 	 */
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class overlap_diff_calculator : public edge_weight_calculator<REAL,DIM> {
 		bool use_confidence;
 	public:
 		overlap_diff_calculator(bool use_confidence = true):use_confidence(use_confidence){}
 
 		void cal_weight(const EDGE_P<REAL, DIM> edge,std::pair<REAL,REAL>& weight,REAL& conf){
-			assert(edge->overlap_idxs.size() > 0); // 如果使用overlap来计算weight，则要求两个块之间必须在空间上接壤
+			assert(edge->overlap_idxs.size() > 0);
 
 			REAL diff = 0, inv_diff = 0;
 			assert(edge->start->is_inved() == false);
@@ -511,7 +465,7 @@ namespace GRAPH_IPSR {
 			diff /= edge->overlap_idxs.size();
 			inv_diff /= edge->overlap_idxs.size();
 			weight = std::pair<REAL,REAL>(diff/(diff+inv_diff), inv_diff/(diff + inv_diff));
-			conf = max(diff, inv_diff) / (diff + inv_diff);
+			conf = std::max(diff, inv_diff) / (diff + inv_diff);
 		}
 
 		nlohmann::json get_config(){
@@ -558,42 +512,24 @@ namespace GRAPH_IPSR {
 			std::string log_path = floder + "/log.json";
 			nlohmann::json j;
 			j["config"] = get_config();
-			j["cal_res"] = caculate_res(edge);
+			j["cal_res"] = this->caculate_res(edge);
 			std::ofstream out(log_path);
 			out << j.dump(4);
 			out.close();
 		}
 	};
 
-	// TODO 统一两种计算方式
-	// template<typename REAL, int DIM>
-	// class ConsistencyCaculator:public edge_weight_calculator<REAL,DIM>{
 	// protected:
-	// 	std::map<VERTEX_P<REAL, DIM>, int> _vertex2idx;
-	// 	std::vector<std::vector<std::pair<REAL, REAL>>> _weight;
 	// 	REAL _max_weight,_min_weight;
-	// 	// 将consistency转为权重
-	// 	std::pair<REAL, REAL> __toweight(REAL ori_consistency, REAL inv_consistency) {
-	// 		return std::pair<REAL, REAL>(1 - ori_consistency / (ori_consistency + inv_consistency), 1 - inv_consistency / (ori_consistency + inv_consistency));
-	// 	}
-	// 	// 根据两个weight给出置信度
 	// 	REAL _weight2conf(std::pair<REAL, REAL> weight) {
-	// 		return max(weight.first, weight.second) / (weight.first + weight.second);
-	// 	}
 	// 	REAL _normalize_weight(REAL weight) {
 	// 		REAL w =  (weight - _min_weight) / (_max_weight - _min_weight);
-	// 		assert(w >= 0 && w <= 1);
-	// 		return w;
-	// 	}
 	// 	virtual _cal_edge_weight(const EDGE_P<REAL, DIM> edge, std::pair<REAL, REAL>& weight) = 0;
 	// public:
-	// }
-
 	/**
 	 * @brief 
-	 * weight为不同视角下，可见面片的朝向一致性的均值 
 	 */
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class consistency_calculator : public edge_weight_calculator<REAL, DIM> {
 		MeshConsistency<REAL,DIM>* _oc;
 		IPSR_Factory<REAL, DIM>* _factory;
@@ -601,7 +537,6 @@ namespace GRAPH_IPSR {
 		std::map<VERTEX_P<REAL, DIM>, int> _vertex2idx;
 		std::vector<std::vector<std::pair<REAL, REAL>>> _weight;
 		REAL _max_weight,_min_weight;
-		// 将consistency转为权重
 		std::pair<REAL, REAL> __toweight(REAL ori_consistency, REAL inv_consistency) {
 			if (ori_consistency == inv_consistency) {
 				assert(ori_consistency + inv_consistency == 0);
@@ -632,9 +567,8 @@ namespace GRAPH_IPSR {
 			return tri_type;
 		}
 
-		// 根据两个weight给出置信度
 		REAL _weight2conf(std::pair<REAL, REAL> weight) {
-			return max(weight.first, weight.second) / (weight.first + weight.second);
+			return std::max(weight.first, weight.second) / (weight.first + weight.second);
 		}
 
 		void _cal_edge_weight(const EDGE_P<REAL, DIM> edge, std::pair<REAL, REAL>& weight) {
@@ -671,7 +605,6 @@ namespace GRAPH_IPSR {
 				else _meshes[i] = lg->_nodes[i]->get_self_mesh();
 				_vertex2idx[lg->_nodes[i]] = i;
 				++finished;
-				// 打印进度 finish/total
 				printf("\r%d/%d", finished.get(), (int)lg->_nodes.size());
 			}
 
@@ -679,7 +612,6 @@ namespace GRAPH_IPSR {
 			for (int i = 0; i < num_nodes; i++) {
 				std::vector<REAL> temp;
 				auto op = lg->_nodes[i]->get_self_op();
-				//assert(_meshes[i].first.size() != 0 || op.size() < 10);
 				_meshes[i] = clean_mesh(_meshes[i], op, temp,20 + 20 * 3 * subdivision_times);
 			}
 
@@ -699,15 +631,13 @@ namespace GRAPH_IPSR {
 					int s = _vertex2idx[all_edges[i][j]->start], e = _vertex2idx[all_edges[i][j]->end];
 					if(s == e) continue;
 					auto semi_weight = _weight[s][e];
-					// 如果其逆边已经计算过，则直接使用
 					if(semi_weight != std::pair<REAL,REAL>(-1,-1)){
 						continue;
 					}
 
-					// 否则计算权重，并将其一并赋值给逆边
 					_cal_edge_weight(all_edges[i][j], _weight[s][e]);
-					_max_weight = max(_max_weight, max(_weight[s][e].first, _weight[s][e].second));
-					_min_weight = min(_min_weight, min(_weight[s][e].first, _weight[s][e].second));
+					_max_weight = std::max(_max_weight, std::max(_weight[s][e].first, _weight[s][e].second));
+					_min_weight = std::min(_min_weight, std::min(_weight[s][e].first, _weight[s][e].second));
 					_weight[e][s] = _weight[s][e];
 					++finished;
 					++finished;
@@ -730,7 +660,6 @@ namespace GRAPH_IPSR {
 		}
 
 		void cal_weight(const EDGE_P<REAL, DIM> edge, std::pair<REAL, REAL>& weight, REAL& conf) {
-			// 翻转操作应该在cal_weight之后进行
 			assert(edge->start->is_inved() == false);
 			assert(edge->end->is_inved() == false);
 			std::pair<REAL, REAL> unnormalized_weight = _weight[_vertex2idx[edge->start]][_vertex2idx[edge->end]];
@@ -761,7 +690,7 @@ namespace GRAPH_IPSR {
 	
 			nlohmann::json log_j;
 			log_j["config"] = get_config();
-			log_j["cal_res"] = caculate_res(edge);
+			log_j["cal_res"] = this->caculate_res(edge);
 			log_j["consistency"] = j;	
 			std::ofstream out(log_path);
 			out << log_j.dump(4);
@@ -771,20 +700,18 @@ namespace GRAPH_IPSR {
 
 	/**
 	 * @brief 
-	 * 相比于consistency_calculator,其每个边单独生成一个mesh
 	 * @tparam REAL 
 	 * @tparam DIM 
 	 */
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class consistency_calculator_plus:public edge_weight_calculator<REAL,DIM>{
 		MaxAB_Mesh<REAL, DIM> _oc;
-		UnorderedPairMap<std::pair<MESH,MESH>> _mesh_graph; // 用于存储每个边对应的ori_mesh和inv_end_mesh. 由于不考虑overlap，所以边是无序的
+		UnorderedPairMap<std::pair<MESH,MESH>> _mesh_graph;
 		UnorderedPairMap<std::pair<REAL,REAL>> _weight;
 		UnorderedPairMap<std::pair<std::vector<int>, std::vector<int>>> _tri_type;
 		std::map<VERTEX_P<REAL, DIM>, int> _vertex2idx;
 	
 		REAL _max_weight, _min_weight;
-		// 将consistency转为权重
 		std::pair<REAL, REAL> __toweight(REAL ori_consistency, REAL inv_consistency) {
 			if (ori_consistency == inv_consistency) {
 				assert(ori_consistency + inv_consistency == 0);
@@ -794,9 +721,8 @@ namespace GRAPH_IPSR {
 			return std::pair<REAL, REAL>(1 - ori_consistency / (ori_consistency + inv_consistency), 1 - inv_consistency / (ori_consistency + inv_consistency));
 		}
 
-		// 根据两个weight给出置信度
 		REAL _weight2conf(std::pair<REAL, REAL> weight) {
-			return max(weight.first, weight.second) / (weight.first + weight.second);
+			return std::max(weight.first, weight.second) / (weight.first + weight.second);
 		}
 
 		REAL _normalize_weight(REAL weight) {
@@ -828,7 +754,6 @@ namespace GRAPH_IPSR {
 	public:
 
 		void cal_weight(const EDGE_P<REAL, DIM> edge, std::pair<REAL, REAL>& weight, REAL& conf) {
-			// 翻转操作应该在cal_weight之后进行
 			assert(edge->start->is_inved() == false);
 			assert(edge->end->is_inved() == false);
 			std::pair<REAL, REAL> unnormalized_weight = _weight[std::pair<int,int>(_vertex2idx[edge->start],_vertex2idx[edge->end])];
@@ -859,7 +784,7 @@ namespace GRAPH_IPSR {
 					auto edge = lg->_edges[i][j];					
 					std::pair<int,int> e = std::make_pair(_vertex2idx[edge->start], _vertex2idx[edge->end]);
 					if (_mesh_graph.has(e)) {
-						continue; // 跳过逆边
+						continue;
 					}
 					assert(_vertex2idx[edge->start] == i);
 				 
@@ -872,14 +797,15 @@ namespace GRAPH_IPSR {
 					lzd_tools::revert_op(ori_b);
 					inv_end_op.insert(inv_end_op.end(), ori_b.begin(), ori_b.end());
 					
-					MESH ori_mesh = clean_mesh(factory->get_mesh_from_points_normals(ori_op), ori_op, std::vector<REAL>());
-					MESH inv_end_mesh = clean_mesh(factory->get_mesh_from_points_normals(inv_end_op), ori_op, std::vector<REAL>());
+					std::vector<REAL> ori_pmdist;
+					std::vector<REAL> inv_pmdist;
+					MESH ori_mesh = clean_mesh(factory->get_mesh_from_points_normals(ori_op), ori_op, ori_pmdist);
+					MESH inv_end_mesh = clean_mesh(factory->get_mesh_from_points_normals(inv_end_op), ori_op, inv_pmdist);
 					_mesh_graph[e] = std::pair<MESH, MESH>(ori_mesh, inv_end_mesh);
 
 										
 					std::vector<int> op_type(ori_a.size(), 1);
 					op_type.insert(op_type.end(), ori_b.size(), 2);
-					// 由ori_op建立kdtree, tri_type = 最近的点的类型
 					std::vector<int> _ori_tri_type(ori_mesh.second.size(), 0);
 					std::vector<int> _inv_tri_type(inv_end_mesh.second.size(), 0);
 
@@ -891,7 +817,7 @@ namespace GRAPH_IPSR {
 					for (int i = 0; i < ori_mesh.second.size(); i++) {
 						Point<REAL,DIM> c = ori_mesh.first[ori_mesh.second[i][0]] + ori_mesh.first[ori_mesh.second[i][1]] + ori_mesh.first[ori_mesh.second[i][2]];
 						c /= 3;
-						pcl::PointNormal searchPoint{ (float)c[0],(float)c[1],(float)c[2] }; // TODO 把这个nc float类型的kdtree换掉	
+						pcl::PointNormal searchPoint{ (float)c[0],(float)c[1],(float)c[2] };
 						assert(kdtree.nearestKSearch(searchPoint, 1, pointIdxNKNSearch,tp) > 0);
 						_ori_tri_type[i] = op_type[pointIdxNKNSearch[0]];
 					
@@ -919,8 +845,8 @@ namespace GRAPH_IPSR {
 					std::pair<REAL, REAL> weight;
 					_cal_edge_weight(all_edges[i][j], weight);
 					_weight[std::make_pair(s, e)] = weight;
-					_max_weight = max(_max_weight, max(weight.first, weight.second));
-					_min_weight = min(_min_weight, min(weight.first, weight.second));
+					_max_weight = std::max(_max_weight, std::max(weight.first, weight.second));
+					_min_weight = std::min(_min_weight, std::min(weight.first, weight.second));
 					++finished;
 				}
 			}
@@ -959,7 +885,7 @@ namespace GRAPH_IPSR {
 
 			nlohmann::json log_j;
 			log_j["config"] = get_config();
-			log_j["cal_res"] = caculate_res(edge);
+			log_j["cal_res"] = this->caculate_res(edge);
 			log_j["consistency"] = j;
 			std::ofstream out(log_path);
 			out << log_j.dump(4);
@@ -969,7 +895,7 @@ namespace GRAPH_IPSR {
 
 
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class point_consistency_calculator:public edge_weight_calculator<REAL,DIM>{
 		PointOrientationConsistency<REAL,DIM> _poc;
 		
@@ -1012,9 +938,8 @@ namespace GRAPH_IPSR {
 			return w;
 		}
 
-		// 根据两个weight给出置信度
 		REAL _weight2conf(std::pair<REAL, REAL> weight) {
-			return max(weight.first, weight.second) / (weight.first + weight.second);
+			return std::max(weight.first, weight.second) / (weight.first + weight.second);
 		}
 
 	public:
@@ -1027,7 +952,6 @@ namespace GRAPH_IPSR {
 			for (int i = 0; i < num_nodes; i++) {
 				_vertex2idx[lg->_nodes[i]] = i;
 				++finished;
-				// 打印进度 finish/total
 				printf("\r%d/%d", finished.get(), (int)lg->_nodes.size());
 			}
 
@@ -1046,8 +970,8 @@ namespace GRAPH_IPSR {
 				for (int j = 0; j < all_edges[i].size(); j++) {
 					int s = _vertex2idx[all_edges[i][j]->start], e = _vertex2idx[all_edges[i][j]->end];
 					_cal_edge_weight(all_edges[i][j], _weight[s][e]);
-					_max_weight = max(_max_weight, max(_weight[s][e].first, _weight[s][e].second));
-					_min_weight = min(_min_weight, min(_weight[s][e].first, _weight[s][e].second));
+					_max_weight = std::max(_max_weight, std::max(_weight[s][e].first, _weight[s][e].second));
+					_min_weight = std::min(_min_weight, std::min(_weight[s][e].first, _weight[s][e].second));
 					++finished;
 					printf("\r%d/%d", finished.get(), total_edges);
 				}
@@ -1093,7 +1017,7 @@ namespace GRAPH_IPSR {
 			j["inv_avg_consistency"] = inv_consistency;
 			nlohmann::json log_j;
 			log_j["config"] = get_config();
-			log_j["cal_res"] = caculate_res(edge);
+			log_j["cal_res"] = this->caculate_res(edge);
 			log_j["consistency"] = j;	
 			std::ofstream out(log_path);
 			out << log_j.dump(4);
@@ -1101,11 +1025,11 @@ namespace GRAPH_IPSR {
 		}
 	};
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class dipole_calculator:public edge_weight_calculator<REAL,DIM>{
 	private:
 		REAL _eps;
-		REAL _max_weight; // 不需要记录_min_weight
+		REAL _max_weight;
 		const linked_graph<REAL,DIM>* _lg;
 		std::vector<std::vector<std::pair<REAL, REAL>>> _weight;
 		std::map<VERTEX_P<REAL, DIM>, int> _vertex2idx;
@@ -1145,7 +1069,6 @@ namespace GRAPH_IPSR {
 		dipole_calculator(REAL eps, const linked_graph<REAL,DIM>* lg):_eps(eps),_lg(lg){
 			printf("dipole_calculator construction...\n");
 			int num_nodes = lg->_nodes.size();
-			// 计算每个边的权重
 			_weight = std::vector<std::vector<std::pair<REAL, REAL>>>(num_nodes, std::vector<std::pair<REAL, REAL>>(num_nodes, std::pair<REAL, REAL>(-1, -1)));
 
 			lzd_tools::thread_safe_int finished(0);
@@ -1167,7 +1090,7 @@ namespace GRAPH_IPSR {
 				for (int j = 0; j < all_edges[i].size(); j++) {
 					int s = _vertex2idx[all_edges[i][j]->start], e = _vertex2idx[all_edges[i][j]->end];
 					_cal_edge_weight(all_edges[i][j], _weight[s][e]);
-					_max_weight = max(_max_weight, max(_weight[s][e].first, _weight[s][e].second));
+					_max_weight = std::max(_max_weight, std::max(_weight[s][e].first, _weight[s][e].second));
 					++finished;
 					printf("\r%d/%d", finished.get(), total_edges);
 				}
@@ -1188,7 +1111,7 @@ namespace GRAPH_IPSR {
 			assert(edge->end->is_inved() == false);
 			std::pair<REAL, REAL> unnormalized_weight = _weight[_vertex2idx[edge->start]][_vertex2idx[edge->end]];
 			weight = std::pair<REAL, REAL>(_normalize_weight(unnormalized_weight.first), _normalize_weight(unnormalized_weight.second));
-			conf = max(weight.first, weight.second) / (weight.first + weight.second);
+			conf = std::max(weight.first, weight.second) / (weight.first + weight.second);
 		}
 
 		void visualization(const EDGE_P<REAL,DIM> edge,std::string floder){
@@ -1207,13 +1130,8 @@ namespace GRAPH_IPSR {
 
 	/**
 	 * @brief 
-	 * 计算两种权重边和conf
-	 * 定义一个权重边的conf_rate为其在所有边中的conf的排名比例(越大表示conf越大)
-	 * 如果p_conf_rate与a_conf_rate差距大于gap,则使用aid的权重
-	 * 注意使用的是排名比例，而不是conf的值,这样可以保证不同的conf计算方法可以比较;
-	 * 但还是尽量保证conf、weight的值域接近，否则后续计算weight_sum时可能会出错
 	 */
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class CoCalculator:public edge_weight_calculator<REAL,DIM>{
 		edge_weight_calculator<REAL,DIM>* _primary_calculator;
 		edge_weight_calculator<REAL,DIM>* _aid_calculator;
@@ -1221,13 +1139,6 @@ namespace GRAPH_IPSR {
 		std::vector<REAL> primary_edge_conf;
 		std::vector<REAL> aid_edge_conf;
 
-		// float __get_ration(REAL conf, std::vector<REAL>& confs){
-		// 	auto it = std::lower_bound(confs.begin(),confs.end(),conf);
-		// 	return (float)(it - confs.begin()) / (float)confs.size();
-		// }
-
-		// 判断是否使用primary的权重
-		// 如果p_conf在primary_edge_conf中的位置比a_conf在aid_edge_conf中的位置靠前的比例大于_gap，则不使用primary的权重
 		bool _use_primary(REAL p_conf,REAL a_conf){
 			float p_conf_rate = (float)(std::lower_bound(primary_edge_conf.begin(),primary_edge_conf.end(),p_conf) - primary_edge_conf.begin()) / (float)primary_edge_conf.size();
 			float a_conf_rate = (float)(std::lower_bound(aid_edge_conf.begin(),aid_edge_conf.end(),a_conf) - aid_edge_conf.begin()) / (float)aid_edge_conf.size();
@@ -1258,7 +1169,6 @@ namespace GRAPH_IPSR {
 			REAL p_conf = 0,a_conf = 0;
 			_primary_calculator->cal_weight(edge,primary_weight,p_conf);
 			_aid_calculator->cal_weight(edge,aid_weight,a_conf);
-			// 如果两种weight不一致，则将primary_weight调低
 			if (primary_weight.first >= primary_weight.second != aid_weight.first >= aid_weight.second) {
 				double e = 1e-5;
 				if(_use_primary(p_conf,a_conf)){
@@ -1297,7 +1207,7 @@ namespace GRAPH_IPSR {
 			_aid_calculator->visualization(edge,floder + "/aid");
 			nlohmann::json j;
 			j["config"] = get_config();
-			j["cal_res"] = caculate_res(edge);
+			j["cal_res"] = this->caculate_res(edge);
 
 			std::pair<REAL,REAL> primary_weight,aid_weight;
 			REAL p_conf = 0,a_conf = 0;
@@ -1318,7 +1228,7 @@ namespace GRAPH_IPSR {
 
 	};
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	edge_weight_calculator<REAL,DIM>* get_edge_caculator_from_json(nlohmann::json config_j,IPSR_Factory<REAL, DIM>* factory, const linked_graph<REAL, DIM>* lg){
 		std::string name = config_j["name"];
 		if(name == "overlap_diff_calculator"){
@@ -1360,10 +1270,9 @@ namespace GRAPH_IPSR {
 		}
 	}
 
-	// 使用邻接链表存储的图
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class linked_graph {
-		std::map<VERTEX_P<REAL, DIM>, int> _vertex2idx; //_vertex2idx[_nodes[i]] = i。有时候有node指针，但不知道其在_nodes中的索引
+		std::map<VERTEX_P<REAL, DIM>, int> _vertex2idx;
 		std::map<std::pair<int, int>, EDGE_P<REAL, DIM>> _idx2edge;
 
 		edge_weight_calculator<REAL, DIM>* _calculator = NULL;
@@ -1372,7 +1281,6 @@ namespace GRAPH_IPSR {
 		nlohmann::json config_j;
 		nlohmann::json log_j;
 
-		// 重建顶点与索引的映射
 		void _build_mapper(){
 			_vertex2idx.clear();
 			for(int i = 0;i<_nodes.size();i++){
@@ -1395,29 +1303,16 @@ namespace GRAPH_IPSR {
 
 		/**
 		 * @brief 
-		 * 初始状态下，每个顶点都是一个集合，每个集合中只有一个顶点。
-		 * step1:对边随机排序，此后每次选择一条有向边，
-		 * 	a.如果该边的两个顶点不在同一个集合中，则将这两个集合合并,
-		 * 	  然后，将这条边及其逆边加入到最小生成树中
-		 * 	b.如果该边的两个顶点在同一个集合中，则跳过这条边
-		 * step2:此时的最小生成树为一个无向图，需要将其转为树
-		 * 	    用visited数组记录已经访问的顶点，然后从任意一个顶点开始遍历
-		 * 		对于每个顶点：
-		 * 	   	   遍历顶点的边：
-		 * 		      如果边的另一个顶点未被访问，则将这条边加入到最小生成树中
-		 *            如果边的另一个顶点已经被访问，则跳过这条边
-		 * 		树的构建结束条件为所有的顶点都被访问
 		 * 			
-		 * @return linked_graph 其中node部分为原始的node，edge部分为生成树的边
 		 */
 		linked_graph random_kruskal(){
 			_build_mapper();
 			std::vector<int> nodes;
-			std::vector<std::pair<int,int>> sorted_edges;//排序后的边
-			std::vector<std::vector<std::pair<int,int>>> temp_edges(_nodes.size());//生成树的中间结果，此时任意两个顶点之间有两条边
+			std::vector<std::pair<int,int>> sorted_edges;
+			std::vector<std::vector<std::pair<int,int>>> temp_edges(_nodes.size());
 			
 			std::vector<VERTEX_P<REAL,DIM>> res_nodes;
-			std::vector<std::vector<EDGE_P<REAL,DIM>>> res_edges(_nodes.size());//生成树的边
+			std::vector<std::vector<EDGE_P<REAL,DIM>>> res_edges(_nodes.size());
 
 			for(int i = 0;i<_nodes.size();i++){
 				nodes.push_back(i);
@@ -1427,9 +1322,8 @@ namespace GRAPH_IPSR {
 					int e = _vertex2idx[_edges[i][j]->end];
 
 					double brief = _edges[i][j]->get_brief();
-					brief = std::sqrt(brief);//防止brief过大,会很慢
+					brief = std::sqrt(brief);
 					//global_var::config_j["graph_ipsr_config"]["linked_graph_config_random_kruskal_brief"] = "edge_brief";
-					//double brief = 1
 					//global_var::config_j["graph_ipsr_config"]["linked_graph_config"]["random_kruskal_brief"] = "always 1";
 
 #ifdef _UNSERTAIN
@@ -1443,27 +1337,22 @@ namespace GRAPH_IPSR {
 				}
 			}
 
-			// 随机排序
 			std::random_shuffle(sorted_edges.begin(),sorted_edges.end());
 
-			// 并查集
 			std::vector<int> parent(nodes.size());
 			for(int i = 0;i<parent.size();i++){
 				parent[i] = i;
 			}	
 
-			// step1：遍历边 构建生成树的中间结果
 			for(int i = 0;i<sorted_edges.size();i++){
 				int s = sorted_edges[i].first, e = sorted_edges[i].second;
 				if(find(parent,s) != find(parent,e)){
-					// 生成树的中间结果中，任意两个顶点之间有两条边
 					temp_edges[s].push_back(std::pair<int,int>(s,e));
 					temp_edges[e].push_back(std::pair<int,int>(e,s));
 					parent[find(parent, e)] = find(parent, s);
 				}
 			}
 
-			// 并查集的根节点的个数即为连通分量的个数
 			int cluster_num = 0;
 			std::vector<int> cluster_id(nodes.size(),0);
 			for(int i=0;i<parent.size();i++){
@@ -1474,7 +1363,6 @@ namespace GRAPH_IPSR {
 			}
 			printf("cluster_num=%d\t", cluster_num);
 
-			// step2：将生成树的中间结果转为生成树
 			std::vector<int> visited(nodes.size(),0);
 			std::queue<int> q;
 			q.push(0);
@@ -1484,7 +1372,6 @@ namespace GRAPH_IPSR {
 				q.pop();
 				for(int i = 0;i<temp_edges[cur].size();i++){
 					int next = temp_edges[cur][i].second;
-					// temp树中,可能有些边其实并不存在 这可能会导致原本联通的分量断连 FIXME
 					if (_idx2edge.find(std::pair<int, int>(cur, next)) == _idx2edge.end()) {
 						continue;
 					}
@@ -1495,7 +1382,6 @@ namespace GRAPH_IPSR {
 					}
 				}
 
-				// 如果q为空,将未被访问的一个顶点(如果存在)加入到队列中.
 				if (q.empty()) {
 					for (int i = 0; i < nodes.size(); i++) {
 						if (!visited[i]) {
@@ -1509,7 +1395,6 @@ namespace GRAPH_IPSR {
 			return linked_graph(res_nodes,res_edges);
 		}
 
-		// 检查这个图是否是森林
 		bool check_forest(){
 			std::vector<int> visited(_nodes.size(),0);
 			std::queue<int> q;
@@ -1540,7 +1425,6 @@ namespace GRAPH_IPSR {
 			return true;
 		}
 
-		// 撤销所有翻转 
 		void _recover(){
 			for(int i = 0;i<_nodes.size();i++){
 				if(_nodes[i]->is_inved()){
@@ -1549,8 +1433,6 @@ namespace GRAPH_IPSR {
 			}
 		}
 
-		// 对齐两个翻转序列。比较二者的欧氏距离，如果大于一半，那么将后者翻转
-		// 返回值为1表示翻转了，0表示没有翻转
 		int align_flip(std::vector<int>& flip1, std::vector<int>& flip2){
 			assert(flip1.size() == flip2.size());
 			int dist = 0 , inv_dist = 0;
@@ -1572,11 +1454,8 @@ namespace GRAPH_IPSR {
 		}
 
 		
-		/**********************翻转算法 翻转node并返回翻转历史*************************************/
 		/**
 		 * @brief 
-		 * 计算准确率。对于每个块，与_gt进行比较，
-		 * 		若该翻转状态下与gt法向量差距相比另一种翻转状态下更小，则认为该翻转状态是正确的
 		 * @param flag 
 		 * @return float 
 		 */
@@ -1592,7 +1471,6 @@ namespace GRAPH_IPSR {
 			return (float)acc / _nodes.size();
 		}
 
-		/************************************翻转算法end*************************************************/
 
 	public:
 
@@ -1605,11 +1483,7 @@ namespace GRAPH_IPSR {
 			BEST_TREE
 		};
 
-		// 原始顶点
-		//POINTS_NORMALS _ori_op;
-		// 顶点列表
 		std::vector<VERTEX_P<REAL,DIM>> _nodes;
-		// 边列表的列表，每个顶点对应一个边列表
 		std::vector<std::vector<EDGE_P<REAL, DIM>>> _edges;
 
 		linked_graph(
@@ -1638,7 +1512,7 @@ namespace GRAPH_IPSR {
 			std::mutex *mtx = new std::mutex[_nodes.size()];
 			lzd_tools::thread_safe_int finished(0);
 			int total_count = iter * _nodes.size();
-			printf("start parallel update. %d nodes has total_iter%d\n",_(int)nodes.size(),total_count);
+			printf("start parallel update. %d nodes has total_iter%d\n", (int)_nodes.size(), total_count);
 #pragma omp parallel for
 			for(int i = 0;i<iter;i++){
 				for (int j = 0; j < _nodes.size(); j++) {
@@ -1669,11 +1543,10 @@ namespace GRAPH_IPSR {
 
 		/**
 		 * @brief 
-		 * 计算所有边的权重
 		 */
 		void cal_edges_weight() {
 			assert(_calculator != NULL);
-			printf("start calculateing weight...\n");
+			printf("start calculating weight...\n");
 			lzd_tools::thread_safe_int cnt(0);
 			int total_edge = 0;
 			for (int i = 0; i < _nodes.size(); i++) {
@@ -1685,9 +1558,6 @@ namespace GRAPH_IPSR {
 					std::pair<REAL, REAL> weight;
 					REAL conf = 0;
 					_calculator->cal_weight(_edges[i][j], weight,conf);
-					if (weight.first == 0 || weight.second == 0) {
-						printf("weight %d, %d", weight.first,weight.second);
-					}
 					if (conf < 0.5) {
 						printf("conf=%f\n", conf);
 						printf("weight=%f,%f\n", weight.first, weight.second);
@@ -1731,7 +1601,6 @@ namespace GRAPH_IPSR {
 			return sum;
 		}
 
-		// 求所有边的权重和（要求所有边的权重已经计算）
 		REAL cal_all_weight_sum() {
 			REAL sum = 0;
 			for (int i = 0; i < _nodes.size(); i++) {
@@ -1763,8 +1632,6 @@ namespace GRAPH_IPSR {
 			return res;
 		}
 
-		// comb: 将所有的顶点的点云合并成一个大的点云 
-		// seg_id: 记录每个点云的来源
 		POINTS_NORMALS comb(std::vector<int>& seg_id) {
 			POINTS_NORMALS res;
 			seg_id.clear();
@@ -1811,7 +1678,6 @@ namespace GRAPH_IPSR {
 
 		/**
 		 * @brief 
-		 * // 将图转为json格式
 		 * {
 		 * 	"graph":[
 		 * 		{
@@ -1852,9 +1718,6 @@ namespace GRAPH_IPSR {
 
 		/**
 		 * @brief 
-		 * 打印图的拓扑结构
-		 * @param adpath 例如"/graph_ipsr/"
-		 * @param adname 用于给文件命名
 		 */
 		void print_topology(std::string adpath = "",std::string adname = "") {
 			std::string path = _nodes[0]->_handle->get_out_put_base(adpath) + adname + "graph_topology.json";
@@ -1872,7 +1735,6 @@ namespace GRAPH_IPSR {
 				nd["metric"] = _nodes[i]->cal_metric().to_json();
 				node_log.push_back(nd);
 			}
-			// 根据j["metric"]["avg_nd_loss"]对j["nodes"]进行排序
 			std::sort(node_log.begin(), node_log.end(), [](nlohmann::json a, nlohmann::json b) {
 				return a["metric"]["avg_nd_loss"].get<double>() < b["metric"]["avg_nd_loss"].get<double>();
 				});
@@ -1890,7 +1752,6 @@ namespace GRAPH_IPSR {
 
 		/**
 		 * @brief 
-		 * 打印图中,各个节点的结果
 		 */
 		void print_log(std::string adpath = "",std::string adname = ""){
 			std::string path = _nodes[0]->_handle->get_out_put_base(adpath) + adname + "graph_log.json";
@@ -1904,35 +1765,26 @@ namespace GRAPH_IPSR {
 			MESH mesh;
 			using COLOR_NAME = lzd_tools::beautifulColorMapper<int>::COLOR_NAME;
 
-			// 将所有顶点加入到mesh中
 			std::vector<int> seg_id;
 			POINTS_NORMALS op = comb(seg_id);
-			// 打印op
 			std::string path = _nodes[0]->_handle->get_out_put_base(adpath) + adname + "graph_op.ply";
 			lzd_tools::InFiniteMap<int>* colormap = new lzd_tools::RandomColorMapper<int>(seg_id);
 			lzd_tools::op2ply(op, path, XForm<REAL, DIM + 1>().Identity(), colormap);
 
-			//for(int i = 0;i<op.size();i++){
 			//	mesh.first.push_back(op[i].first);
-			//}
-			
-			// 所有点的类别设为0
 			seg_id = std::vector<int>();
 
-			// 每个顶点上绘制一个球
 			std::vector<Point<REAL,DIM>> centers;
 			for(int i = 0;i<_nodes.size();i++){
 				Point<REAL,DIM> c = _nodes[i]->center_op;
 				auto sphere = lzd_tools::get_sphere(c,0.01);
 				lzd_tools::add_topology(mesh, sphere);
-				//int node_status = _nodes[i]->inved_status_according2gt()==0?COLOR_NAME::GRAY_BLUE:COLOR_NAME::SEAWEED_GREEN;
 				int node_status = _nodes[i]->inved_status_according2gt()==0?0:1;
 				for(int j = 0;j<sphere.first.size();j++){
 					seg_id.push_back(node_status);
 				}				
 				centers.push_back(c);			
 			}
-			// 将所有的边加入到mesh中
 			for(int i = 0;i<_nodes.size();i++){
 				for(int j = 0;j<_edges[i].size();j++){
 					int edge_status = _edges[i][j]->is_wrong_edge() ? 2:3; 
@@ -1952,7 +1804,6 @@ namespace GRAPH_IPSR {
 		void draw_edge(std::string adpath = "", std::string adname = "",std::string measurement = "brief") {
 			MESH all_edges;
 			std::vector<REAL> edge_metric;
-			// 所有的点加入到mesh中
 			std::vector<Point<REAL, DIM>> centers;
 			for (int i = 0; i < _nodes.size(); i++) {
 				Point<REAL, DIM> c = _nodes[i]->center_op;
@@ -1963,7 +1814,6 @@ namespace GRAPH_IPSR {
 				}
 				centers.push_back(c);
 			}
-			// 将所有的边加入到mesh中
 			for(int i = 0;i<_nodes.size();i++){
 				for(int j = 0;j<_edges[i].size();j++){
 					int s = i, e = _vertex2idx[_edges[i][j]->end];
@@ -1997,7 +1847,7 @@ namespace GRAPH_IPSR {
 			get_all_op(self_op);
 			assert(gt.size() == res_op.size());
 			// self_op's kdtree
-			vector<kdt::KDTreePoint> vertices;
+			std::vector<kdt::KDTreePoint> vertices;
 			for (int i = 0; i < self_op.size(); i++) {
 				array<REAL, 3> p = { self_op[i].first[0],self_op[i].first[1],self_op[i].first[2] };
 				vertices.push_back(kdt::KDTreePoint(p));
@@ -2005,7 +1855,7 @@ namespace GRAPH_IPSR {
 			kdt::KDTree<kdt::KDTreePoint> kdtree(vertices);
 
 			double total_dist = 0;
-#pragma omp parallel for
+#pragma omp parallel for reduction(+:total_dist)
 			for (int i = 0; i < gt.size(); i++) {
 				array<REAL, 3> p = { gt[i].first[0],gt[i].first[1],gt[i].first[2] };
 				auto res = kdtree.knnSearch(p, 1);
@@ -2062,18 +1912,16 @@ namespace GRAPH_IPSR {
 				for (int j = 0; j < _edges[i].size(); j++) {
 					auto e = _edges[i][j];
 					int s = _vertex2idx[e->start], t = _vertex2idx[e->end];
-					printf("edge (%d,%d), weigth = (%f,%f)n", s, t, e->get_weight().first, e->get_weight().second);
 					std::string floder = base_floder + adname + std::to_string(s) + "_" + std::to_string(t) + "/";
 					rmkdir(floder);
 					_calculator->visualization(e, floder);
 					
 				}
 			}
-			cout << "save all edge done!\n";
+			std::cout << "save all edge done!\n";
 		}
 		/**
 		 * @brief 
-		 * 绘制错误的边(即无法从权重中判断是否对齐)
 		 * @param calculator  
 		 */
 		void save_wrong_edge(std::string adpath = "/graph_ipsr/wrong_edge/", std::string adname = ""){
@@ -2087,14 +1935,13 @@ namespace GRAPH_IPSR {
 					auto e = _edges[i][j];
 					if(e->is_wrong_edge()){
 						int s = _vertex2idx[e->start], t = _vertex2idx[e->end];
-						printf ("wrong edge (%d,%d), weigth = (%f,%f)n", s, t, e->get_weight().first, e->get_weight().second);
 						std::string floder = base_floder + adname +  std::to_string(s) + "_" + std::to_string(t) + "/";
 						rmkdir(floder);
 						_calculator->visualization(e,floder);
 					}
 				}
 			}
-			cout << "save wrong edge done!\n";
+			std::cout << "save wrong edge done!\n";
 		}
 		
 		void save_optim(std::string adpath = "/graph_ipsr/", std::string adname = "optimflip") {
@@ -2108,14 +1955,12 @@ namespace GRAPH_IPSR {
 			lzd_tools::op2ply(op, path, XForm<REAL, DIM + 1>().Identity(), colormap);
 		}
 		
-		// 注意node的get_resname()和实际输出的是不一样的。
 		void load_seg(std::string self_arg_flag,std::string refer_arg_flag, std::string adpath = "/graph_ipsr/lg_seg/", std::string adname = "res") {
 			double total_dist = 0, max_dist=0, total_count = 0;
 			std::string floder = _nodes[0]->_handle->get_out_put_base(adpath);
 			floder = floder.replace(floder.find(self_arg_flag), self_arg_flag.size(), refer_arg_flag);
 			printf("load seg from %s\n", floder.c_str());
-			// 检查文件夹是否存在
-			if(GetFileAttributesA(floder.c_str()) == INVALID_FILE_ATTRIBUTES){
+			if(!std::filesystem::exists(floder)){
 				printf("floder %s not exist\n", floder.c_str());
 				assert(false);
 			}
@@ -2123,7 +1968,6 @@ namespace GRAPH_IPSR {
 			std::string log_path = floder + adname + "log.json";
 			for (int i = 0; i < _nodes.size(); i++) {
 				std::string path = floder + adname + std::to_string(i) + ".ply";
-				// 读取ply文件
 				POINTS_NORMALS op;
 				ply_reader<REAL, DIM>(path, op);
 				if (op.size() != _nodes[i]->_op.size()) {
@@ -2134,7 +1978,7 @@ namespace GRAPH_IPSR {
 					double d = Distance(op[j].first, _nodes[i]->_op[j].first);
 					_nodes[i]->_op[j].second = op[j].second;
 					total_count += 1;
-					max_dist = max(d, max_dist);
+					max_dist = std::max(d, max_dist);
 					total_dist += d;
 				}
 				_nodes[i]->iupdate2op();
@@ -2145,9 +1989,7 @@ namespace GRAPH_IPSR {
 
 		/**
 		 * @brief 
-		 * 存储当前每个顶点的结果
 		 * @param adpath 
-		 * @param adname 例如结束阶段调用时,可以设置为"res"  
 		 */
 		void save_seg(std::string adpath = "/graph_ipsr/lg_seg/", std::string adname = "") {
 			nlohmann::json nodes_j;
@@ -2156,23 +1998,19 @@ namespace GRAPH_IPSR {
 				j["id"] = _vertex2idx[_nodes[i]];
 				nodes_j.push_back(j);
 			}
-			// 保存seg
 			std::string floder = _nodes[0]->_handle->get_out_put_base(adpath);
 			rmkdir(floder);
 			for(int i = 0;i<_nodes.size();i++){
 				std::string path = floder + adname + std::to_string(_vertex2idx[_nodes[i]]) + ".ply";
 				lzd_tools::op2ply(_nodes[i]->_op,path,XForm<REAL,DIM+1>().Identity(),std::make_pair(_nodes[i]->_op_type, lzd_tools::get_regular_colormap(0, 1)));
 			}
-			// 保存log
 			std::string log_path = floder + adname + "log.json";
 			std::ofstream out(log_path);
 			out << get_log().dump(4);
 			out.close();	
 		}
 
-		// TODO
-		void save_gt(std::string adpath = "/graph_ipsr/lg_seg/", std::string adname = "gt") {
-			// 保存seg
+			void save_gt(std::string adpath = "/graph_ipsr/lg_seg/", std::string adname = "gt") {
 			std::string floder = _nodes[0]->_handle->get_out_put_base(adpath);
 			rmkdir(floder);
 			for (int i = 0; i < _nodes.size(); i++) {
@@ -2183,29 +2021,25 @@ namespace GRAPH_IPSR {
 
 }; 
 
-/******************************************顶点的组织********************************************************/
-	// 可能考虑将顶点用简单的立方体，或者octree来组织。这部分完全面向顶点。但每个组织方式，需要提供一个转为图的接口。
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class NodeAllocator {
 	public:
 		virtual linked_graph<REAL, DIM> op_orchestration(
-			IPSR_Factory<REAL, DIM> ipsr_factory, // 用于从op生成ipsr
-			int (*_update_plan)(Period& p), //ipsr更新方式
-			NormalEstimation<REAL, DIM>* estimator //用来初始化法向量
+			IPSR_Factory<REAL, DIM> ipsr_factory,
+			int (*_update_plan)(Period& p),
+			NormalEstimation<REAL, DIM>* estimator
 		) = 0;
 
 		virtual nlohmann::json get_config() = 0;
 
 	};
 
-	// 将立方体分割成一个立方体网格,每个小格为一个正方体
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class simple_cube : public NodeAllocator<REAL,DIM>{
 		typedef std::vector<int> CUBE_COORDINATE;
-		// 立方体网格中的一个立方体的边界(矩形边界)
 		typedef struct rectangle_bbox {
 			static REAL INF;
-			std::pair<REAL, REAL> boundaries[DIM];//每个维度的上/下界,first为下界, second为上界
+			std::pair<REAL, REAL> boundaries[DIM];
 			rectangle_bbox(){
 				for(int d = 0;d<DIM;d++){
 					boundaries[d].first = rectangle_bbox::INF;
@@ -2225,7 +2059,6 @@ namespace GRAPH_IPSR {
 			}
 
 			bool check_isinside(Point<REAL, DIM> p) {
-				// 允许一定误差
 				for (int i = 0; i < DIM; i++) {
 					REAL gap = 0.0001 * (boundaries[i].second - boundaries[i].first);
 					if (p[i] < boundaries[i].first  - gap || p[i] > boundaries[i].second + gap) return false;
@@ -2235,19 +2068,15 @@ namespace GRAPH_IPSR {
 
 		}rectangle_bbox;
 		
-		// 立方体网格中的一个单元
 		typedef struct simple_cube_grid{
 			static REAL overlap_rate;
-			// 构造函数参数
-			POINTS_NORMALS grid_op;//该小格内的点云
-			rectangle_bbox op_bbox;//grid_op的边界
-			rectangle_bbox grid_bbox;//该小格的边界
+			POINTS_NORMALS grid_op;
+			rectangle_bbox op_bbox;
+			rectangle_bbox grid_bbox;
 			
-			int num;//该小格内的点云数量
-			std::vector<CUBE_COORDINATE> neighbers;//邻居的3维坐标
-			//std::vector<std::vector<int>> extand_overlap;//与邻居的重合部分在邻居的grid_op中的索引
+			int num;
+			std::vector<CUBE_COORDINATE> neighbers;
 			
-			//first: 该维度上的边界小于overlap_rate的点; second: 该维度上的边界大于1-overlap_rate的点
 			std::vector<std::pair<std::vector<int>, std::vector<int>>> border_idxs;
 
 			simple_cube_grid(POINTS_NORMALS op, rectangle_bbox grid_bbox){
@@ -2257,7 +2086,6 @@ namespace GRAPH_IPSR {
 				this->grid_bbox = grid_bbox;
 				neighbers.clear();
 
-				// 计算border_idxs
 				border_idxs.clear();
 				for(int d = 0;d<DIM;d++){
 					std::vector<int> pre;
@@ -2275,33 +2103,28 @@ namespace GRAPH_IPSR {
 					border_idxs.push_back(std::pair<std::vector<int>, std::vector<int>>(pre, latter));
 				}
 			}
-			// 判断一个点是否在该grid内部	
 			bool check_isinside(Point<REAL,DIM> p){
 				return grid_bbox.check_isinside(p);
 			}
-			// 判断该grid是否为有效的
 			bool is_vaild(){
 				return grid_op.size() > simple_cube<REAL, DIM>::_op_num_treshold;
 			}
 		}GRID;
 
-		static int _op_num_treshold;//每个立方体中的点云数量阈值 如果小于这个阈值，则不考虑
+		static int _op_num_treshold;
 		
-		// 由构造函数提供
-		int min_grid;//指定后，每个维度上至少会切分min_grid刀；_stride = (最短的维度+eps）/min_grid
-		int max_grid;//TODO 没法保证同时满足min_grid和max_grid
-		POINTS_NORMALS _op;//原始点云
+		int min_grid;
+		int max_grid;
+		POINTS_NORMALS _op;
 		
-		// 在_spilt_op阶段计算
-		rectangle_bbox _op_bbox;//原始点云的边界
-		REAL _stride;// 划分的步长。由于是立方体，所以只需要一个步长
-		T_CUBE<GRID*> _grids;//立方体网格
-		int x_num, y_num, z_num;//立方体网格各个维度的长度
+		rectangle_bbox _op_bbox;
+		REAL _stride;
+		T_CUBE<GRID*> _grids;
+		int x_num, y_num, z_num;
 
 
 		void _spilt_op(){
 			_op_bbox = rectangle_bbox(_op);
-			//计算步长
 			_stride = 0.0;
 			REAL min_stride = 1e9;
 			for(int i = 0;i<DIM;i++){
@@ -2309,17 +2132,15 @@ namespace GRAPH_IPSR {
 				if(stride < min_stride) min_stride = stride;
 			}
 			_stride = min_stride / min_grid;
-			// 将包围盒的下界减少_stride,使得所有含有点云的grid的索引都是正数
 			for(int i = 0;i<DIM;i++){
 				_op_bbox.boundaries[i].first -= (_stride*1.001);
 			}
-			//计算网格数量
 			x_num = floor((_op_bbox.boundaries[0].second - _op_bbox.boundaries[0].first) / _stride) + 1;
 			y_num = floor((_op_bbox.boundaries[1].second - _op_bbox.boundaries[1].first) / _stride) + 1;
 			z_num = floor((_op_bbox.boundaries[2].second - _op_bbox.boundaries[2].first) / _stride) + 1;
 
 			T_CUBE<POINTS_NORMALS> _grid_op;
-			T_CUBE<rectangle_bbox> _grid_bboxs;// 各个grid的包围盒
+			T_CUBE<rectangle_bbox> _grid_bboxs;
 			
 			_grid_op.resize(x_num);
 			_grid_bboxs.resize(x_num);
@@ -2368,7 +2189,6 @@ namespace GRAPH_IPSR {
 			}
 		}
 
-		// 返回i，j，k坐标的邻居的三维坐标
 		std::vector<CUBE_COORDINATE> _get_neighbor_3idx(CUBE_COORDINATE _3idx){
 			int i = _3idx[0], j = _3idx[1], k = _3idx[2];
 			assert(i >= 0 && i < x_num);
@@ -2385,7 +2205,6 @@ namespace GRAPH_IPSR {
 			return neighbors;
 		}
 
-		// 返回i，j，k坐标的合法邻居的三维坐标
 		std::vector<CUBE_COORDINATE> _get_vaild_neighbor_3idx(CUBE_COORDINATE _3idx){
 			std::vector<CUBE_COORDINATE> neighbors = _get_neighbor_3idx(_3idx);
 			std::vector<CUBE_COORDINATE> vaild_neighbors;
@@ -2400,19 +2219,12 @@ namespace GRAPH_IPSR {
 		
 		/**
 		 * @brief 
-		 * 完成grid到vertex以及edge的一些准备工作。
-		 * @param op vertex的点云
-		 * @param flag vertex中的点的属性。0表示来自grid，1表示来自邻居grid
-		 * @param correspon 1点一定会同时出现在两个vertex中，需要维护一一对应关系以便计算overlap。因此是一个pair数组的列表
-		 * 					每个pair数组记录了1点的其中一个来源
-		 * 					数组中的每个pair记录了1点在本身中的索引（first）以及在邻居中的索引（second）。
 		 * 					
 		 */
 		void _grid2op(CUBE_COORDINATE _3idx, POINTS_NORMALS& op, std::vector<int>& flag, std::vector<std::vector<std::pair<int,int>>>& correspon){
 			op.clear();
 			flag.clear();
 			GRID* grid = _grids[_3idx[0]][_3idx[1]][_3idx[2]];
-			// 复制op
 			for(int i = 0;i<grid->grid_op.size();i++){
 				op.push_back(grid->grid_op[i]);
 				flag.push_back(0);
@@ -2422,10 +2234,10 @@ namespace GRAPH_IPSR {
 			for(auto n:grid->neighbers){
 				assert(_grids[n[0]][n[1]][n[2]]->is_vaild());
 				POINTS_NORMALS& neibor_op = _grids[n[0]][n[1]][n[2]]->grid_op;
-				std::vector<int> idx;//点在邻居中的索引
+				std::vector<int> idx;
 				for(int d = 0;d<DIM;d++){
 					if(_3idx[d]!=n[d]){
-						assert(_3idx[(d+1)%3] == n[(d+1)%3] && _3idx[(d+2)%3] == n[(d+2)%3]);//另外两个维度相同
+						assert(_3idx[(d+1)%3] == n[(d+1)%3] && _3idx[(d+2)%3] == n[(d+2)%3]);
 						if(_3idx[d] == n[d] - 1){
 							idx = _grids[n[0]][n[1]][n[2]]->border_idxs[d].first;
 						}else if(_3idx[d] == n[d] + 1){
@@ -2472,7 +2284,6 @@ public:
 			T_CUBE<VERTEX_P<REAL,DIM>> vertexp_cube;
 			T_CUBE<std::vector<EDGE_P<REAL, DIM>>> edgelist_cube;
 
-			//初始化顶点和边的指针数组
 			vertexp_cube.resize(x_num);
 			for(int i = 0;i<x_num;i++){
 				vertexp_cube[i].resize(y_num);
@@ -2499,12 +2310,10 @@ public:
 				}
 			}			
 
-			// 填充vertex和edge
 			for (int i = 0; i < x_num; i++) {
 				for (int j = 0; j < y_num; j++) {
 					for (int k = 0; k < z_num; k++) {
 						if(!_grids[i][j][k]->is_vaild())continue;
-						// 填充vertex
 						POINTS_NORMALS tempop;
 						std::vector<std::vector<std::pair<int,int>>> tempcor;
 						_grid2op({i,j,k},tempop,vertexp_cube[i][j][k]->_op_type,tempcor);
@@ -2512,7 +2321,6 @@ public:
 						vertexp_cube[i][j][k]->_op = tempop;
 						vertexp_cube[i][j][k]->center_op = lzd_tools::get_center_on_op(tempop);
 						
-						// 填充edge
 						for (int t = 0; t < _grids[i][j][k]->neighbers.size();t++){
 							edgelist_cube[i][j][k][t]->overlap_idxs = tempcor[t];
 						}
@@ -2520,7 +2328,6 @@ public:
 				}
 			}
 
-			// 构建图
 			for(int i = 0;i<x_num;i++){
 				for(int j = 0;j<y_num;j++){
 					for(int k = 0;k<z_num;k++){
@@ -2533,7 +2340,6 @@ public:
 			return ihp_graph;
 		}
 
-		// 获得所有立方体的中心顶点(注意不是坐标)
 		std::vector<Point<REAL, DIM>> get_centers() {
 			std::vector<Point<REAL, DIM>> centers;
 			for (int i = 0; i < x_num; i++) {
@@ -2551,16 +2357,14 @@ public:
 
 }; 
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class SeedGrowing:public NodeAllocator<REAL, DIM> {
 		using pcl_op_cloud = pcl::PointCloud<pcl::PointNormal>;
 		using pcl_kdtree = pcl::search::KdTree<pcl::PointNormal>;
 		
 		typedef struct SinglePoint {
 			int id;
-			//std::pair<Point<REAL, DIM>, Normal<REAL, DIM>> op;
 			SinglePoint(int id) :id(id) {
-				//op = _points_normals[id];
 			}
 		}SinglePoint;
 
@@ -2570,17 +2374,17 @@ public:
 			REAL distance;
 
 			PointEdge(int s, int e, REAL distance) :s(s), e(e),distance(distance) {
-				assert(distance >= 0); // 有的模型存在重合的点
+				assert(distance >= 0);
 			}
 		}PointEdge;
 
 		typedef struct Cluster {
 			int cluster_id;
 
-			std::vector<int> op_type;//0表示local，1表示share
+			std::vector<int> op_type;
 			std::vector<SinglePoint> points;
 
-			std::map<int, std::vector<std::pair<int, int>>> share_points_cor;//share_points在cluster中的索引和在其他cluster中的索引。后续map的每个元素作为edge的overlap_idxs
+			std::map<int, std::vector<std::pair<int, int>>> share_points_cor;
 
 			Cluster(int cluster_id) :cluster_id(cluster_id) {
 				points.clear();
@@ -2594,12 +2398,11 @@ public:
 				return points.size() - 1;
 			}
 
-			//此时扩张以及结束，根据点出现过的簇，计算本簇所有的点的原始id，以及在原始簇中的索引
 			void build_cor(const std::vector<std::vector<std::pair<int, int>>>& idx_in_clusters,const std::vector<int>& _belonging) {
 				for (int i = 0; i < points.size(); i++) {
-					int pidx = points[i].id;//在全局中的索引
+					int pidx = points[i].id;
 					for (int j = 0; j < idx_in_clusters[pidx].size(); j++) {
-						int cidx = idx_in_clusters[pidx][j].first;//重合点所属的cluster_id
+						int cidx = idx_in_clusters[pidx][j].first;
 						if (cidx == cluster_id)continue;
 						if (cidx != _belonging[pidx])continue;
 						int pidx_in_c = idx_in_clusters[pidx][j].second;
@@ -2612,23 +2415,18 @@ public:
 		typedef struct KnnGraph {
 			// input
 			const POINTS_NORMALS _points_normals;
-			float _radius;//搜索半径上限
-			int _k;//邻居数量上限
+			float _radius;
+			int _k;
 
 			// data
 			pcl_kdtree::Ptr global_tree;
 			pcl_op_cloud::Ptr cloud;
 			std::vector<SinglePoint> points;
-			std::vector<std::vector<PointEdge>> edges;// edges[i]表示第i个点的所有邻居
+			std::vector<std::vector<PointEdge>> edges;
 
-			// ************************************private**************************************************
-
-			/**
-			 * @brief 
-			 * 维护一个点集。
-			 * 开始时，点集内只有一个点；将点集中所有邻居中，距离最近的点加入点集。
-			 * 重复上述过程，直到点集中的点数量达到k
-			 */
+				/**
+				 * @brief
+				 */
 			std::vector<int> __prim_neighbers_search(const std::vector<std::vector<float>>& dist_mat,int start_idx){
 				int visited_num = 0, n = dist_mat.size();
 				std::vector<float> distance(n,1e9);
@@ -2656,46 +2454,10 @@ public:
 				return neighbers;			
 			}
 
-			// /**
-			//  * @brief 
-			//  * 
-			//  * @param neighbers 
-			//  * @param idx
-			//  */
-			// std::vector<int> _get_neighbers(int idx) {
-			// 	assert(false);//这个方法用不了.
-			// 	std::vector<int> neighbers;
-			// 	std::vector<int> temp_idx;
-			// 	std::vector<float> temp_distance;
-			// 	global_tree->radiusSearch(cloud->points[idx], _radius, temp_idx, temp_distance);
-				
-			// 	//**********prim搜索**********
-			// 	assert(temp_idx[0] == idx);
-			// 	int idx_in_temp = 0;
-				
-			// 	std::vector<std::vector<float>> dist_mat;
-			// 	dist_mat.resize(temp_idx.size(),std::vector<float>(temp_idx.size(),0));
-			// 	for(int i = 0;i<temp_idx.size();i++){
-			// 		for(int j = i + 1;j<temp_idx.size();j++){
-			// 			REAL d = Distance(_points_normals[temp_idx[i]].first,_points_normals[temp_idx[j]].first);
-			// 			dist_mat[i][j] = d;
-			// 			dist_mat[j][i] = d;
-			// 		}
-			// 	}
-			// 	neighbers = __prim_neighbers_search(dist_mat,idx_in_temp);	
-			// 	for(int i = 0;i<neighbers.size();i++){
-			// 		neighbers[i] = temp_idx[neighbers[i]];
-			// 	}
-			// 	return neighbers;
-			// }
-
-			/**
-			 * @brief
-			 * 从seed出发，计算所有点到seed的最短路径长
-			 * @param distance
+				/**
+				 * @brief
+				 * @param distance
 			 * @param seed
-			 * @param early_stop 增长到一定点的数量后停止
-			 * @return int 可达的点的数量
 			 */
 			int _seed_bfs(std::vector<REAL>& distance, int seed, int early_stop = -1) {
 				lzd_tools::AcumutableTimer seed_bfs("seed_bfs");
@@ -2710,12 +2472,10 @@ public:
 					int idx = q.front();
 					q.pop();
 					for (auto e : edges[idx]) {
-						// 如果e.e没有被访问过 将e.e加入队列
 						if (distance[e.e] == 1e9) {
 							q.push(e.e);
 							num++;
 						}
-						// 更新e.e的distance
 						if (distance[e.e] > distance[e.s] + e.distance) {
 							distance[e.e] = distance[e.s] + e.distance;
 						}
@@ -2727,47 +2487,9 @@ public:
 				return num;
 			}
 
-			// /**
-			//  * @brief
-			//  * 从seed出发，计算所有点到seed的最短路径长
-			//  * @param distance
-			//  * @param seed
-			//  * @return int 可达的点的数量
-			//  */
-			// int _seed_bfs_discrete(std::vector<REAL>& distance, int seed) {
-			// 	int num = 0;
-			// 	distance.clear();
-			// 	distance.resize(_points_normals.size(), 1e9);
-			// 	std::queue<int> q;
-			// 	q.push(seed);
-			// 	num++;
-			// 	distance[seed] = 0;
-			// 	while (!q.empty()) {
-			// 		int idx = q.front();
-			// 		q.pop();
-			// 		for (auto e : edges[idx]) {
-			// 			// 如果e.e没有被访问过 将e.e加入队列
-			// 			if (distance[e.e] == 1e9) {
-			// 				q.push(e.e);
-			// 				num++;
-			// 			}
-			// 			// 更新e.e的distance
-			// 			if (distance[e.e] > distance[e.s] + 1) {
-			// 				distance[e.e] = distance[e.s] + 1;
-			// 			}
-			// 		}
-			// 	}
-			// 	return num;
-			// }
-
-			// ************************************api**************************************************
-			/**
-			 * @brief Construct a new Knn Graph object
-			 * 每个点的邻居数量上限为k
-			 * @param ops 点云
-			 * @param radius knn搜索半径上限
-			 * @param k knn邻居数量上限
-			 */
+				/**
+				 * @brief Construct a new Knn Graph object
+				 */
 			KnnGraph(POINTS_NORMALS& ops, float radius, int k) :_radius(radius), _k(k),_points_normals(ops) {
 				printf("init knngraph... \t");
 				lzd_tools::AcumutableTimer initknn("init knngraph");
@@ -2775,12 +2497,10 @@ public:
 				global_tree = pcl_kdtree::Ptr(new pcl_kdtree);
 				global_tree->setInputCloud(cloud);
 
-				//构建点
 				printf("build points... \t");
 				for (int i = 0; i < _points_normals.size(); i++) {
 					points.push_back(SinglePoint(i));
 				}
-				//构建边
 				printf("build edges... \t");
 				edges.clear();
 				edges.resize(_points_normals.size());
@@ -2790,7 +2510,7 @@ public:
 					std::vector<int> idx;
 					std::vector<float> distance;
 					global_tree->nearestKSearch(cloud->points[i], _k, idx, distance);
-					for (int j = 0; j < min((int)idx.size(),_k); j++) {
+					for (int j = 0; j < std::min((int)idx.size(),_k); j++) {
 						if (i == idx[j])continue;
 						if (distance[j] >= _radius)break;
 						if (edges[i].size() >= k)break;
@@ -2802,7 +2522,6 @@ public:
 
 			/**
 			 * @brief Get the neighbor object
-			 * 得到idx的邻居列表
 			 * @param idx  
 			 */
 			std::vector<int> get_neighbor(int idx) {
@@ -2815,9 +2534,7 @@ public:
 
 			/**
 			 * @brief Get the nearest op idx object
-			 * 得到距离p最近的点的索引
 			 * @param p 
-			 * @return int 最近点的索引 
 			 */
 			int get_nearest_op_idx(Point<REAL, DIM> p) {
 				std::vector<int> idx;
@@ -2831,10 +2548,6 @@ public:
 				return idx[0];
 			}
 
-			// int get_nearest_op_idx(uint idx){
-			// 	std::vector<PointEdge> temp = edges[idx];
-
-			// }
 
 		}KnnGraph;
 
@@ -2846,41 +2559,30 @@ public:
 		// REAL _radius_expand_rate;
 
 // data
-		KnnGraph _knn_graph; // 定义"联通"。
+		KnnGraph _knn_graph;
 
-		/////////////种子//////////////////////
 		std::vector<int> _seeds;
 		/**
 		 * @brief 
-		 * 记录所有点到seed的最短路径长度
-		 * _distance_matrix[i]的长度=点的数量,
-		 * _distance_matrix[i][j]表示第j个点到第i个seed的最短路径长度
 		 */
 		std::vector<std::vector<REAL>> _distance_matrix;
-		std::vector<int> _coverage_num;//记录每个seed的可达点的数量；如果某个种子的可达数量比较小，说明这个种子可能出现在噪点中
+		std::vector<int> _coverage_num;
 
-		/////////////簇///////////////////////
 		std::vector<Cluster> _clusters;
 		/**
 		 * @brief 
-		 * 记录所有点所出现的cluster以及在对应cluster中的索引; 
-		 * len(_idx_in_cluster[i])表示第i个点所出现过的cluster的数量
-		 * _idx_in_cluster[i][j].first表示第i个点出现的第j个cluster的id, _idx_in_cluster[i][j].second表示第i个点在第j个cluster中的索引;
 		 */
 		std::vector<std::vector<std::pair<int,int>>> _idx_in_cluster;
 		/**
 		 * @brief 
-		 * 每个点只作为local_points出现一次。记录其作为local_points出现的cluster的id
 		 */
 		std::vector<int> _idx;
 		
-		//记录每个cluster之间的邻接关系。_cluster_graph[i][j] 中存储了cluster i和cluster j之间的所有边界点
 		std::vector<std::vector<std::vector<int>>> _cluster_graph;
 
 		std::vector<std::vector<double>> _edge_betweeness;
 		std::vector<double> _node_betweeness;
 
-		// 每个点的label
 		aux_arg::LabelGetter<REAL, DIM>* _label_getter;
 		std::vector<int> _label;
 
@@ -2888,7 +2590,6 @@ public:
 
 // aid_func
 
-		// 根据_distance_matrix，判断第[start:_points_normals.size())]的点是否都被访问过
 		bool is_all_arrival(int &start){
 			if(_distance_matrix.size() == 0)return false;
 			for(int j = start;j<_points_normals.size();j++){
@@ -2907,18 +2608,11 @@ public:
 			return true;
 		}
 
-/****************************************************种子的选择*******************************************************************************************/
 		/**
 		 * @brief
-		 * 选择种子
-		 * 任务1: 选择种子在点云中的索引 _seeds
-		 * 任务2: 计算所有点到种子的最短路径长度 distance_matrix
-		 * 任务3: 计算每个种子的可达点的数量 coverage_num
 		*/
 		
 
-		// 从不可达点中随机选择种子 确保所有点都被访问到
-		// 可以在其他种子选择策略使用前/后调用
 		void __scan_unreachable(){
 			int check_start = 0;
 			while(!is_all_arrival(check_start)){
@@ -2933,15 +2627,13 @@ public:
 	
 		}
 		
-		// 种子的策略可以改变，只需要保证种子可以到达所有点
-		// 随机选择seed，并初始化_distance_matrix、_coverage_num。
 		void _random_seed_selection(int seed_num = 100){
 			assert(config_j.find("seed_selection_alg") == config_j.end());
 			config_j["seed_selection_alg"] = "_random_seed_selection";
 			_seeds.clear();
 			_distance_matrix.clear();
 			
-			__scan_unreachable(); // TODO NOT TESTED
+				__scan_unreachable();
 
 			for(int i = _seeds.size();i<seed_num;i++){
 				int seed = rand() % _points_normals.size();
@@ -2963,7 +2655,7 @@ public:
 			
 			_seeds.clear();
 			_distance_matrix.clear();
-			__scan_unreachable(); // TODO NOT TESTED
+				__scan_unreachable();
 
 			simple_cube<REAL, DIM> sc(_points_normals,min_grid);
 			j["config"] = sc.get_config();
@@ -2982,8 +2674,6 @@ public:
 
 		/**
 		 * @brief 
-		 * 快速选择k个种子 保证每个种子所在的格子内大概为n/k个点
-		 * @param k 种子大概数量
 		 */
 		void _k_grid_selection(int k=200){
 			assert(config_j.find("seed_selection_alg") == config_j.end());
@@ -2999,7 +2689,7 @@ public:
 
 			_seeds.clear();
 			_distance_matrix.clear();
-			__scan_unreachable(); // TODO NOT TESTED
+				__scan_unreachable();
 
 			std::vector<int> idx = lzd_tools::k_select<REAL,DIM>(_points_normals,k);
 			for(int i = 0;i<idx.size();i++){
@@ -3012,7 +2702,7 @@ public:
 		}
 
 		void _adaptive_grid_selection(int point_per_grid = 2000){
-			int k = _points_normals.size() / max(1,point_per_grid);
+			int k = _points_normals.size() / std::max(1,point_per_grid);
 			_k_grid_selection(k);
 		}
 
@@ -3038,19 +2728,10 @@ public:
 				_distance_matrix.push_back(distance);
 				_coverage_num.push_back(num);
 			}
-			// int seed_num = _seeds.size();
-			// __scan_unreachable();
-			// if(_seeds.size() != seed_num){
-			// 	printf("add %d seeds because of unreachable points\n", _seeds.size() - seed_num);
-			// }
 		}
 
 
-/****************************************************生成簇*************************************************************************************************/
 		/**
-		 * @brief 生成簇 (_clusters,每个簇的簇id从0~n)
-		 * 任务1: 将每个点分配给一个种子 (_idx ∈ {簇id})
-		 * 任务2: 分配的同时,计算点在簇中的索引(_idx_in_cluster)
 		*/
 		void _allocate_points_by_labels(){
 			config_j["allocate_points_alg"] = "_allocate_points_by_labels";
@@ -3077,12 +2758,9 @@ public:
 			}
 		}
 
-		// 根据_distance_matrix，将每个点分配到距离最近的种子
 		void _allocate_points_by_dist(){
 			config_j["allocate_points_alg"] = "_allocate_points_by_dist";
-			// 计算_idx 
 			_idx.clear();
-			//std::vector<int> cnt_idx(_seeds.size(),0);
 			for(int i = 0;i<_points_normals.size();i++){
 				REAL min_dist = 1e9;
 				int min_idx = -1;
@@ -3102,7 +2780,6 @@ public:
 				_clusters.push_back(Cluster(i));
 			}
 			
-			// 创建簇,并划分簇的local points
 			for(int i = 0;i<_points_normals.size();i++){
 				_idx_in_cluster.push_back(std::vector<std::pair<int, int>>());
 				for(int j = 0;j<_seeds.size();j++){
@@ -3115,11 +2792,7 @@ public:
 		}
 
 
-/****************************************************生成图*************************************************************************************************/
 		/**
-		 * @brief 根据_idx,得到每个簇的邻居簇，根据簇的邻接关系得到_cluster_graph。
-		 * 定义两个簇互为邻居簇的条件为：A簇中存在一个点，该点的邻域内存在点属于B簇。
-		 * 定义边界点如下：某个点的邻域内的点，部分属于该点所在簇{A}，部分属于其他簇{B,C,D,...}，则该点为边界点，表示为A->B,C,D...
 		 */
 		void _cal_cluster_graph(){
 			_cluster_graph.clear();
@@ -3146,12 +2819,7 @@ public:
 
 		/**
 		 * @brief 
-	     * 将t簇并入s簇。需要修改：_idx、_idx_in_cluster、cluster、_cluster_graph、_distance_matrix
-		 * _seed:不修改。将t中的并入s，无seed产生或者删除
-		 * _idx[i]:如果_idx[i] == t,则 s -> _idx[i] 
 		 * _idx_in_cluster[i]:if t in _idx_in_cluster[i] && s not in _idx_in_cluster[i],then replace t with s
-		 * cluster:将t中的点加入s中。此时cluster中一定只有0点
-		 * _cluster_graph:将t的边界点加入s的边界点中（s，t之间的边除外）
 		 * _distance_matrix:_distance_matrix[s][:] = min(_distance_matrix[s][:],_distance_matrix[t][:])
 		 */
 		void __delete_edge(int s, int t) {
@@ -3189,15 +2857,10 @@ public:
 
 			_distance_matrix[t] = std::vector<REAL>(_distance_matrix[t].size(), 1e9);
 
-/*			for (int i = 0; i < _cluster_graph.size(); i++) {
-				_cluster_graph[i].erase(_cluster_graph[i].begin() + t);
-			}*/					
 			_clusters[t].points.clear();
 			_clusters[t].op_type.clear();
-			//_seeds.erase(_seeds.begin() + t);
 		}
 
-		// 计算edge_betweeness和node_betweeness，并正则化
 		void _cal_betweeness() {
 			aux_arg::VV<int> cluster_ad_graph;
 			cluster_ad_graph.resize(_seeds.size());
@@ -3240,119 +2903,32 @@ public:
 			}
 		}
 
-		// 检测cut edge,并消除第一个cutedge。返回cut edge的数量
-		// int __minedege_comb(std::vector<int> sub_seeds) {
-		// 	if (sub_seeds.size() <= 1)return 0;
 		// 	bgl_api::UGRAPH g;
 		// 	g.resize(sub_seeds.size());
-		// 	for (int i = 0; i < sub_seeds.size(); i++) {
 		// 		g[i].resize(sub_seeds.size());
-		// 	}
-		// 	// 从_cluster_graph中构建UGRAPH
-		// 	// 只要_cluster_graph[i][j]或者_cluster_graph[j][i]中有边，就认为i和j之间有边
-		// 	for (int i = 0; i < sub_seeds.size(); i++) {
-		// 		for (int j = i + 1; j < sub_seeds.size(); j++) {
-		// 			int s = sub_seeds[i], t = sub_seeds[j];
-		// 			if (_cluster_graph[s][t].size() > 0 || _cluster_graph[t][s].size() > 0) {
-		// 				double betweeness = max(_edge_betweeness[s][t], _edge_betweeness[t][s]);
-		// 				assert(betweeness > 0 && betweeness <= 1);
-		// 				double w = 1 / betweeness;
 		// 				w *= 100;
-		// 				w = min(w, 1e9);
 		// 				g[i][j] = (int)w, g[j][i] = (int)w;
 		// 				//_edge_betweeness[s][t] = w, _edge_betweeness[t][s] = w;
-		// 			}
-		// 			else {
 		// 				g[i][j] = 0, g[j][i] = 0;
-		// 			}
-		// 		}
-		// 	}
-		// 	std::vector<std::pair<int, int>> res = bgl_api::bgl_stoer_wanger_mincut(g);
-		// 	assert(res.size() != 0);
-		// 	for (int i = 0; i < 1; i++) {
-		// 		__delete_edge(sub_seeds[res[i].first], sub_seeds[res[i].second]);
-		// 	}
-		// 	return res.size();
-		// }
-
-	//***************一些块过滤器,用于合并块************************
-
-		// int _low_minedgecut_filter_iter() {
 		// 	bgl_api::UGRAPH g;
 		// 	g.resize(_seeds.size());
-		// 	for (int i = 0; i < _seeds.size(); i++) {
 		// 		g[i].resize(_seeds.size());
-		// 	}
-		// 	// 从_cluster_graph中构建UGRAPH
-		// 	// 只要_cluster_graph[i][j]或者_cluster_graph[j][i]中有边，就认为i和j之间有边
-		// 	for (int i = 0; i < _seeds.size(); i++) {
-		// 		for (int j = i+1; j < _seeds.size(); j++) {
-		// 			if (_cluster_graph[i][j].size() > 0 || _cluster_graph[j][i].size() > 0) {
 		// 				g[i][j] = 1, g[j][i] = 1;
 		// 			}else{
 		// 				g[i][j] = -1, g[j][i] = -1;
-		// 			}
-		// 		}
-		// 	}
-
-		// 	// 得到最大的联通子图
-		// 	auto componets = bgl_api::bgl_connected_components(g);
-		// 	int c = 0;
-		// 	for (int i = 0; i < componets.size(); i++) {
-		// 		c = max(c,__minedege_comb(componets[i]));
-		// 	}
-		// 	return c;
-		// }
-
 		// void _low_minedgecut_filter(int max_epoch = 10,bool if_save_mid = false){
 		// 	nlohmann::json j;
 		// 	j["name"] = ("_low_minedgecut_filter");
 		// 	j["filter_times"] = max_epoch;
 		// 	config_j["edge_filters"].push_back(j);
 			
-		// 	std::string path = global_var::data_output_base + "/graph_ipsr/temp/";
-		// 	rmkdir(path);
-		// 	_cal_betweeness();
-		// 	_draw_topology(path + "filter_before");
-		// 	for (int i = 0; i < max_epoch; i++) {
-		// 		int c = _low_minedgecut_filter_iter();
-		// 		if(if_save_mid)_draw_topology(path + "filter_after" + std::to_string(i));
-		// 		_cal_betweeness();
-		// 		if (c >= 4)break;
-		// 	}
-
-		// }
-
 		// void _high_edge_betweenness_filter(){
 		// 	config_j["edge_filter"].push_back("_high_edge_betweenness_filter");
-		// 	std::string path = global_var::data_output_base + "/graph_ipsr/temp/";
-		// 	rmkdir(path);
-		// 	_cal_betweeness();
-		// 	_draw_topology(path + "filter_before");
 
 		// 	//global_var::config_j["graph_ipsr_config"]["SeedGrowingConfig"]["high_edge_betweenness_filter_delete_cnt"] = "const 3";
 
-		// 	// 删除betweenness top10%的边
-		// 	int cnt = 0;
-		// 	while (cnt < 0) {
-		// 		_cal_betweeness();
-		// 		// 找到betweenness最大的边
-		// 		std::pair<int, int> e;
 		// 		REAL max_betweeness = 0;
-		// 		for (int i = 0; i < _edge_betweeness.size(); i++) {
-		// 			for (int j = 0; j < _edge_betweeness[i].size(); j++) {
-		// 				if (_edge_betweeness[i][j] > max_betweeness) {
-		// 					max_betweeness = _edge_betweeness[i][j];
-		// 					e = std::make_pair(i, j);
-		// 				}
-		// 			}
-		// 		}
-		// 		__delete_edge(e.first, e.second);
 		// 		cnt++;
-		// 		_draw_topology(path + "filter_after" + std::to_string(cnt));
-		// 	}
-		// }
-
 		void _small_cluster_filter() {
 			nlohmann::json j;
 			j["name"] = "_small_cluster_filter";
@@ -3366,7 +2942,6 @@ public:
 
 			for(int i = 0;i<_clusters.size();i++){
 				if(_clusters[i].points.size() > num_to_delete)continue;
-				// 查找所有邻居簇 找到 cluster.size / boundary.size 最小者
 				int s = _clusters[i].cluster_id, t = -1, tsz_p_boundary_points = 1e9;
 				assert(s == i);
 				for(int j = 0;j<_clusters.size();j++){
@@ -3388,30 +2963,13 @@ public:
 			config_j["node_filter"].push_back(j);
 		}
 
-		// // 从外而内扩张簇（不好用）
 		// void _cluster_expand_by_other() {
-		// 	for(int i = 0;i<_points_normals.size();i++){
-		// 		for(int j = 0;j<_seeds.size();j++){
 		// 			REAL dist_to_seed = _distance_matrix[_idx[i]][i];
-		// 			// 条件:如果该点与簇k的距离<该点与本簇距离的1.25倍,且两个簇存在邻接关系,则将该点加入簇k
-		// 			bool flag = true;
-		// 			flag = flag && _distance_matrix[j][i] <= _radius_expand_rate * dist_to_seed;
-		// 			flag = flag && _cluster_graph[_idx[i]][j].size() > 0;
-		// 			if(!flag)continue;	
-		// 			int t = _clusters[j].add_point(SinglePoint(i),1);
 		// 			_idx_in_cluster[i].push_back(std::make_pair(j,t));
-		// 		}
-		// 	}			
-		// }
-
 		/**
 		 * @brief 
-		 * 从边界点遍历扩张簇。定义cluster <A,B>的boundary_point：属于A，但其k邻域内存在B簇的点
 		 * for A in _clusters: // 
 		 * 	for <A,B> in _cluster_graph[A]:	 // 
-		 *	   初始化一个处理队列q,boundary point点加入队列,并标记为已访问;
-		 *     初始化一个距离数组,表示与boundary point的距离，将B中的点距离设为1e9;其余点距离设为0，它们不会被"加入"到处理队列中
-		 *     从q开始,bfs遍历,计算出队点的distance，直到q为空;将距离矩阵中大于零且小于阈值的点加入A簇,作为A关于B的外点
 		 */
 		void _cluster_expand_by_boundary() {
 			int max_dist = seedgrowing_config_s["expand_max_iter"];
@@ -3428,7 +2986,7 @@ public:
 					std::vector<int> distance(_points_normals.size(),0);
 					std::queue<int> q;
 					for(int k = 0;k<boundary_points.size();k++){
-						assert(_idx[boundary_points[k]] == i); // A->B的边界点一定是A的local_point
+						assert(_idx[boundary_points[k]] == i);
 						q.push(boundary_points[k]);
 					}
 					for(int k = 0;k<_clusters[j].points.size();k++){
@@ -3459,15 +3017,11 @@ public:
 			}
 		}
 				
-		// 根据计算好的_distance_matrix，计算_idx，划分簇,扩大簇,并计算_idx_in_cluster。
 		void _graphing(){
 			_cal_cluster_graph();
 
 			if(seedgrowing_config_s["small_cluster_filter"] == true)_small_cluster_filter();
 			
-			//_low_minedgecut_filter();
-			// 计算当前每个边的betweenness，将betweenness很大的边两侧的点合并为一个点
-			// _cluster_expand_by_other();
 			_cluster_expand_by_boundary();
 			for(int i = 0;i<_seeds.size();i++){
 				_clusters[i].build_cor(_idx_in_cluster,_idx);
@@ -3476,17 +3030,12 @@ public:
 
 // help func
 
-		// 打印点云和拓扑结构
-		// 要求:_idx、_betweeness已经计算好
-		// path即ply文件路径（无后缀名）
 		void _draw_topology(std::string path){
-			// 根据_idx绘制点云
 			lzd_tools::InFiniteMap<int>* mapper = new lzd_tools::RandomColorMapper<int>(_idx);
 			lzd_tools::op2ply(_points_normals,path+"op.ply", XForm<REAL, DIM + 1>().Identity(), mapper);
 
 			std::vector<REAL> op_metric;
 			MESH mesh;
-			// 绘制种子点
 			for(int i = 0;i<_clusters.size();i++){
 				auto sphere = lzd_tools::get_sphere(_points_normals[_seeds[i]].first,0.01);
 				lzd_tools::add_topology(mesh,sphere);
@@ -3494,7 +3043,6 @@ public:
 					op_metric.push_back(_node_betweeness[i]);
 				}
 			}
-			// 绘制边
 			for(int i = 0;i<_cluster_graph.size();i++){
 				for(int j = 0;j<_cluster_graph[i].size();j++){
 					if(_cluster_graph[i][j].size() == 0)continue;
@@ -3508,18 +3056,10 @@ public:
 			lzd_tools::mesh2ply(mesh, path+"topology.ply", XForm<REAL, DIM + 1>().Identity(), new lzd_tools::GradientMapper<REAL>(op_metric));
 		}
 	
-		// 保存每个簇的距离图（可视化每个点到簇中心的距离）
 		void _print_distance(std::string path,int seed_idx){
 			POINTS_NORMALS op;
 			Cluster& cluster = _clusters[seed_idx];
 			std::vector<REAL> op_dist;
-			//std::vector<REAL> alldist;
-			
-			/*for (int i = 0; i < _clusters.size(); i++) {
-				for (int j = 0; j < _distance_matrix[i].size(); j++) {
-					if(_distance_matrix[i][j]!=1e9)alldist.push_back(_distance_matrix[i][j]);
-				}
-			}*/
 			
 			for (int i = 0; i < cluster.points.size(); i++) {
 				if (cluster.op_type[i] == 1)continue;
@@ -3561,10 +3101,8 @@ public:
 			_label_getter = label_getter;
 			printf("SeedGrowing start init...\n");
 			printf("start select seeds...\n");
-			// 选择种子
 			_select_by_label();
 			int t = 0;
-			// TODO 存在不可达点
 			if(!(is_all_arrival(t))){
 				printf("exist unreachable points\n");
 			}
@@ -3572,10 +3110,8 @@ public:
 			printf("start clustering...\n");
 			_allocate_points_by_labels();
 
-			// 生成图
 			_graphing();
 			printf("SeedGrowing init done!\n");
-			// 打印簇的数量
 			printf("cluster num = %d\n",_clusters.size());
 			config_j["name"] = "SeedGrowing";		
 		}
@@ -3584,17 +3120,14 @@ public:
 		SeedGrowing(POINTS_NORMALS& points_normals):_points_normals(points_normals), _knn_graph(points_normals, seedgrowing_config_s["knn_graph"]["radius"], seedgrowing_config_s["knn_graph"]["k"]) {
 			printf("SeedGrowing start init...\n");
 			printf("start select seeds...\n");
-			// 选择种子
 			
 			_select_seed();
 			int t = 0;
 			assert(is_all_arrival(t));
 
 			printf("start clustering...\n");
-			// 生成cluster
 			_allocate_points_by_dist();
 
-			// 生成图
 			_graphing();
 
 			printf("SeedGrowing init done!\n");
@@ -3618,7 +3151,6 @@ public:
 			std::map<int,int> clusterId2Idx;
 			std::map<int,int> vpIdx2clusterIdx;
 
-			// 初始化顶点和边的指针数组
 			for (int i = 0; i < _clusters.size(); i++)
 			{
 				assert(_clusters[i].cluster_id == i);
@@ -3652,12 +3184,10 @@ public:
 			}
 			printf("\n");
 			
-			// 填充edge
 			for(int i = 0;i<vertexp.size();i++){
 				for(int j = 0;j<vertexp.size();j++){
 					int clusteri = vpIdx2clusterIdx[i],clusterj = vpIdx2clusterIdx[j], s=i,e=j;
 					if(clusteri == clusterj)continue;
-					// if(_cluster_graph[clusteri][clusterj].size() == 0)continue;
 					EDGE<REAL, DIM>* edgep;
 					if(_clusters[clusteri].share_points_cor.find(clusterj) == _clusters[clusteri].share_points_cor.end()){
 						edgep = new EDGE<REAL, DIM>(vertexp[s], vertexp[e]);
@@ -3671,10 +3201,6 @@ public:
 			}
 
 			std::string path = vertexp[0]->_handle->get_out_put_base("/graph_ipsr/seedcluster/");
-			// for(int i = 0;i<vertexp.size();i++){
-			// 	_print_distance(path,i);
-			// }
-
 			linked_graph<REAL, DIM> ihp_graph(vertexp, edgelist);	
 			return ihp_graph;			
 		}	
@@ -3682,9 +3208,8 @@ public:
 
 	/**
 	 * @brief 
-	 * 根据label分配点到簇 再根据簇生成图
 	 */
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	class AllocateByLabels:public NodeAllocator<REAL,DIM> {
 		private:
 			std::vector<int> _label;
@@ -3700,7 +3225,6 @@ public:
 				return j;
 			}
 
-			//TODO 写一个自己的...
 			linked_graph<REAL, DIM> op_orchestration(
 				IPSR_Factory<REAL, DIM> ipsr_factory,
 				int (*_update_plan)(Period& p),
@@ -3712,7 +3236,7 @@ public:
 			}		
 	};
 
-	template<typename REAL, int DIM>
+	template<typename REAL, unsigned int DIM>
 	NodeAllocator<REAL,DIM>* createAllocatorByJson(nlohmann::json j, POINTS_NORMALS points_normals){
 		std::string name = j["name"];
 		if(name == "AllocateByLabels"){
@@ -3751,11 +3275,16 @@ public:
 
 	typedef double REAL;
 	const unsigned int DIM = 3U;
+	template<>
 	int simple_cube<REAL, DIM>::_op_num_treshold = 10;
+	template<>
 	REAL simple_cube<REAL, DIM>::rectangle_bbox::INF = 1e9;
+	template<>
 	REAL simple_cube<REAL, DIM>::simple_cube_grid::overlap_rate = 0.25;
+	template<>
 	int graph_edge<REAL, DIM>::_overlap_treshold = 0;
 	nlohmann::json static_conf = nlohmann::json();
+	template<>
 	nlohmann::json SeedGrowing<REAL, DIM>::seedgrowing_config_s = nlohmann::json();
 
 	static void assign_static_conf(){

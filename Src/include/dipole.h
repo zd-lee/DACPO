@@ -8,7 +8,7 @@ template<typename REAL>
 using INTERSACTION_MATRIX = std::vector<std::vector<REAL>>;
 
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 E_FIELD_GRAD<REAL> field_grad(const ORIENTED_POINTS& sources, const ORIENTED_POINTS& means, REAL _eps) {
     E_FIELD_GRAD<REAL> E_total(means.size(), std::vector<REAL>(DIM, 0));
 #pragma omp parallel for
@@ -25,7 +25,7 @@ E_FIELD_GRAD<REAL> field_grad(const ORIENTED_POINTS& sources, const ORIENTED_POI
             }
             R_norm = sqrt(R_norm);
             if (R_norm <= 0) {
-                continue; // 不考虑重合的点
+                continue;
             }
             REAL R_unit[DIM];
             for (int k = 0; k < DIM; k++) {
@@ -38,7 +38,7 @@ E_FIELD_GRAD<REAL> field_grad(const ORIENTED_POINTS& sources, const ORIENTED_POI
     return E_total;
 };
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 REAL cal_field_intersaction(const ORIENTED_POINTS& sources, const ORIENTED_POINTS& means, REAL eps) {
     E_FIELD_GRAD<REAL> st_E = field_grad(sources, means, eps);
     REAL st_interaction = 0;
@@ -71,7 +71,6 @@ namespace FIELD_PROPAGATION {
          * @param source N*6
          * @param target N*6
          * @param mask N*K
-         * @return Eigen::MatrixXd N*K. @return[i][j] = source[mask[i][j]]对target[i]产生的影响
          */
         Eigen::MatrixXd mask_xie_intersection(const Eigen::MatrixXd& source,
             const Eigen::MatrixXd& target,
@@ -117,12 +116,10 @@ namespace FIELD_PROPAGATION {
         /**
          * @brief
          * @param startpoints
-         * @return std::vector<int> 遍历的顺序
          */
         std::vector<int> get_BFS_route(int startpoints);
 
         /**
-         * @brief 得到邻居最少的点的邻居数
          * @return int 
          */
         int get_shortest_nei();

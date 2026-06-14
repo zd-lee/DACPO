@@ -3,11 +3,10 @@ import numpy as np
 import json
 from pathlib import Path
 
-# 设置服务器的IP和端口
-HOST = '0.0.0.0'  # 监听所有IP地址
-PORT = 11111    # 监听的端口号
-REQUEST_BUFFER_SIZE = 1000 # 接收缓冲区大小，单位为字节
-max_thread = 50 # 同时处理的最大线程数
+HOST = '0.0.0.0'
+PORT = 11111
+REQUEST_BUFFER_SIZE = 1000
+max_thread = 50
 
 
 import numpy as np
@@ -15,10 +14,7 @@ import gurobipy as gp
 from tools import cal_loss
 
 '''
-data: 长度为n*n*2的数组
-w为n*n的矩阵, w[i,j]表示x[i]和x[j]在指派相同的时候的权重,即A
-inv_w为n*n的矩阵, inv_w[i,j]表示x[i]和x[j]在指派不同的时候的权重,即B
-将w和inv_w平铺到一维数组后拼接,即data
+data: flattened n*n*2 array containing same-assignment and different-assignment weights.
 '''
 def data_preprocess(data):
     data = np.array(data)
@@ -74,7 +70,6 @@ def handle_client(conn, addr):
     with conn:
         print(f"Connected by {addr}")
         try:
-            # 接收数据
             req = conn.recv(REQUEST_BUFFER_SIZE)
             req = json.loads(req.decode())
             print(req)
@@ -97,13 +92,10 @@ def handle_client(conn, addr):
                 print(f"Data size mismatch. Expected {data_buffer_size} bytes, but received {len(data)} bytes.")
                 assert False
     
-            # 假设接收到的数据是一个numpy数组
             w, inv_w = data_preprocess(np.frombuffer(data, dtype=np.float64))
             res = MIQP(w, inv_w)
-            # 返回结果
             conn.sendall(res.astype(np.int32).tobytes())
         except Exception as e:
-            # 打印错误行号
             import traceback
             traceback.print_exc()
             print(f"Error: {e}")

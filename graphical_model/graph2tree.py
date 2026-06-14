@@ -1,12 +1,12 @@
 import numpy as np
 from graph_base import BiEdge,BidGraph,swmincut,Graph,ncut
 
-    
+
 class ClusterGraph:
     def __init__(self):
-        self.V = [] # 
-        self.E = [] # BiEdge, 其中u,v是在V中的idx, w为两个簇之间所有边的权重之和
-        
+        self.V = [] #
+        self.E = []
+
     def add_node(self, cluster):
         '''
         node: NodeSet
@@ -14,14 +14,13 @@ class ClusterGraph:
         assert cluster!=set()
         id = len(self.V)
         for c in self.V:
-            assert c.isdisjoint(cluster) 
+            assert c.isdisjoint(cluster)
         self.V.append(cluster)
         return id
 
     def add_edge(self, edge):
         self.E.append(edge)
 
-    # 将ClusterGraph转化为BidGraph 其中每个Cluster被看成一个节点
     def toBiGraph(self):
         G = BidGraph()
         for i in range(len(self.V)):
@@ -31,9 +30,7 @@ class ClusterGraph:
         return G
 
     '''
-    转变为graph_base.graph
-    其中每个簇的center是簇中心
-    每个簇之间存在边,权重为两个簇之间所有边的权重之和
+    Convert the cluster graph to graph_base.Graph.
     '''
     def toGraph(self,g):
         class simpleNode:
@@ -46,8 +43,8 @@ class ClusterGraph:
                 self.end = end
                 self.w = w
         new_g = Graph(None)
-        
-        
+
+
         for i in range(len(self.V)):
             id = i
             center = np.zeros(3)
@@ -58,17 +55,17 @@ class ClusterGraph:
         for edg in self.E:
             new_g.edges.append(simpleEdge(edg.u,edg.v,edg.w))
         return new_g
-        
+
     def __st_cut_on_longest_path(self):
         G = self.toBiGraph()
-    
+
     def __stoer_wagner(self):
         assert len(self.V) > 1
         G = self.toBiGraph()
         # cut,f = ncut(G)
         cut,f = swmincut(G)
-        S = [] 
-        T = [] 
+        S = []
+        T = []
         for i in range(len(cut)):
             if cut[i] == 0:
                 S.append(i)
@@ -86,14 +83,13 @@ class ClusterGraph:
             assert False
         return cut_edge,S,T,f
 
-    # cut后,将A,B中的boundary簇合并
     def cut_and_comb(self):
         assert len(self.V) > 1
         cut_edge,A,B,_ = self.__stoer_wagner()
         boundaryA = set()
         boundaryB = set()
         is_boundary = np.zeros(len(self.V))
-        
+
         for edg in cut_edge:
             if edg.u in A and edg.v in B:
                 boundaryA = boundaryA.union(self.V[edg.u])
@@ -117,19 +113,16 @@ class ClusterGraph:
                 if not is_boundary[i]:
                     resB.append(self.V[i])
             else:
-                assert False                
+                assert False
         if boundaryA != set():
             resA.append(boundaryA)
         if boundaryB != set():
             resB.append(boundaryB)
-        return resA,resB        
+        return resA,resB
 
-'''
-G:BidGraph
-A,B:两个簇,例如A = {1,2},B = {3,4}
-返回A,B两个簇之间的边列表,边类型为BiEdge,其中u,v是在G.V中的idx
-1,2,3,4是G.V中的idx
-'''
+    '''
+    Return BiEdges between two clusters A and B.
+    '''
 def getEdgeBetweenCluster(G,A,B):
     edge_set = []
     for edg in G.E:
@@ -138,22 +131,21 @@ def getEdgeBetweenCluster(G,A,B):
         if u in A and v in B or u in B and v in A:
             edge_set.append(edg)
     return edge_set
-            
-   
+
+
 def getClusterGraph(G,V):
     # '''
     # G:BidGraph
-    # V:Cluster list,每个Cluster是一个集合,其中每个元素都是G.V中的元素
     # '''
     edge_set = {}
     cluster_graph = ClusterGraph()
     node2id = np.array([-1 for _ in range(len(G.V))])
-    
+
     for i in range(len(V)):
         id = cluster_graph.add_node(V[i])
         for node_id in V[i]:
             assert node_id in G.V
-            node2id[node_id] = id 
+            node2id[node_id] = id
     for edg in G.E:
         u = node2id[edg.u]
         v = node2id[edg.v]
@@ -168,8 +160,8 @@ def getClusterGraph(G,V):
         u,v = key
         cluster_graph.add_edge(BiEdge(u,v,edge_set[key],edge_set[key]))
     return cluster_graph
-    
-    
+
+
 
 '''
 queue = [getClusterGraph(G,G.V)]
@@ -180,10 +172,10 @@ while queue is not empty:
     boundary = {cut_edge.u,cut_edge.v}
     A = S - boundary + comb(boundary ∩ S),B = T - boundary + comb(boundary ∩ T)
     if len(A) > 1:
-        queue.append(G,A) # 图
+        queue.append(G,A)
     else:
-        res.append(A) # 点集
-    
+        res.append(A)
+
     if len(B) > 1:
         queue.append(G,B)
     else:
@@ -204,7 +196,7 @@ def graph2tree(G):
             queue.append(getClusterGraph(G,sub_V))
         else:
             res.append(sub_V)
-    print("联通分量数：",len(queue) + len(res))
+    print("connected component count:",len(queue) + len(res))
     while len(queue) > 0:
         X = queue.pop()
         tg = X.toBiGraph()
@@ -219,7 +211,7 @@ def graph2tree(G):
             queue.append(getClusterGraph(G,B))
         else:
             res.append(B)
-    return res  
-    
+    return res
 
-        
+
+

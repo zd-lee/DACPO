@@ -65,7 +65,7 @@
         }
     },
     "refer_arg_flag": "it_20_dp_-1_nb_10_sd_10504_pt_10.000000",
-    "refer_arg_flag_describ": "直接使用其它参数已经计算好的segment res,仅测试翻转算法时使用",
+    "refer_arg_flag_describ": "Reuse segment results computed with another argument set; intended only for testing flip algorithms.",
     "update_plan":"neumman_ind_ipsr",
     "seg_sample_depth":10,
     "seg_sample_depth_describ":"The depth of the segment sample. don't change it unless you know what you are doing.",

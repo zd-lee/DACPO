@@ -5,7 +5,7 @@ int pcd_seg(char * input_path){
   pcl::PCDReader reader;
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>), cloud_f (new pcl::PointCloud<pcl::PointXYZ>);
   reader.read (input_path, *cloud);
-  std::cout << "PointCloud before filtering has: " << cloud->size () << " data points." << std::endl; //*
+  std::cout << "PointCloud before filtering has: " << cloud->size () << " data points." << std::endl;
 
   // Create the filtering object: downsample the dataset using a leaf size of 1cm
   pcl::VoxelGrid<pcl::PointXYZ> vg;
@@ -13,7 +13,7 @@ int pcd_seg(char * input_path){
   vg.setInputCloud (cloud);
   vg.setLeafSize (0.01f, 0.01f, 0.01f);
   vg.filter (*cloud_filtered);
-  std::cout << "PointCloud after filtering has: " << cloud_filtered->size ()  << " data points." << std::endl; //*
+  std::cout << "PointCloud after filtering has: " << cloud_filtered->size ()  << " data points." << std::endl;
 
   // Create the segmentation object for the planar model and set all the parameters
   pcl::SACSegmentation<pcl::PointXYZ> seg;
@@ -75,7 +75,7 @@ int pcd_seg(char * input_path){
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
     for (const auto& idx : cluster.indices) {
       cloud_cluster->push_back((*cloud_filtered)[idx]);
-    } //*
+    }
     cloud_cluster->width = cloud_cluster->size ();
     cloud_cluster->height = 1;
     cloud_cluster->is_dense = true;
@@ -83,7 +83,7 @@ int pcd_seg(char * input_path){
     std::cout << "PointCloud representing the Cluster: " << cloud_cluster->size () << " data points." << std::endl;
     std::stringstream ss;
     ss << std::setw(4) << std::setfill('0') << j;
-    writer.write<pcl::PointXYZ> ("cloud_cluster_" + ss.str () + ".pcd", *cloud_cluster, false); //*
+    writer.write<pcl::PointXYZ> ("cloud_cluster_" + ss.str () + ".pcd", *cloud_cluster, false);
     j++;
   }
 

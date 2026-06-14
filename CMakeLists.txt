@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(DACPO VERSION 1.0.0 LANGUAGES CXX)
 
 # Set C++ standard
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -113,4 +113,4 @@ message(STATUS "PCL version: ${PCL_VERSION}")
 message(STATUS "Eigen3 version: ${Eigen3_VERSION}")
 message(STATUS "Boost version: ${Boost_VERSION}")
 message(STATUS "OpenMP found: ${OpenMP_FOUND}")
-message(STATUS "=================================") 
+message(STATUS "=================================")

@@ -35,7 +35,7 @@ template< class Real > using Color = Point< Real , 3 >;
 template< class Real > void SetColorValues( const Color< Real >& color , unsigned char c[3] ){ for( int i=0 ; i<3 ; i++ ) c[i] = (unsigned char)std::max< int >( 0 , std::min< int >( 255 , (int)( color[i]+0.5 ) ) ); }
 template< class Real > void SetColorValues( const Color< Real >& color , RGBColor& c ){ for( int i=0 ; i<3 ; i++ ) c[i] = (unsigned char)std::max< int >( 0 , std::min< int >( 255 , (int)( color[i]+0.5 ) ) ); }
 
-template< class Real , int Dim >
+template< class Real , unsigned int Dim >
 struct Normal
 {
 	Point< Real , Dim > normal;
@@ -51,8 +51,10 @@ struct Normal
 	Normal  operator -  ( const Normal& p ) const { return Normal( normal-p.normal ); }
 	Normal  operator *  ( Real s ) const { return Normal( normal*s ); }
 	Normal  operator /  ( Real s ) const { return Normal( normal/s ); }
+	bool operator == ( const Normal& p ) const { for( unsigned int d=0 ; d<Dim ; d++ ) if( normal[d]!=p.normal[d] ) return false; return true; }
+	bool operator != ( const Normal& p ) const { return !( (*this)==p ); }
 };
-template< class Real , int Dim >
+template< class Real , unsigned int Dim >
 struct NormalAndColor
 {
 	Point< Real , Dim > normal;
@@ -70,7 +72,7 @@ struct NormalAndColor
 	NormalAndColor  operator /  ( Real s ) const { return NormalAndColor( normal/s , color/s ); }
 };
 
-template< class Real , int Dim >
+template< class Real , unsigned int Dim >
 struct NormalInfo
 {
 	typedef Normal< Real , Dim > Type;
@@ -153,21 +155,21 @@ struct NormalInfo
 	};
 };
 template<>
-const PlyProperty NormalInfo< float , 3 >::PlyProperties[] =
+inline const PlyProperty NormalInfo< float , 3 >::PlyProperties[] =
 {
 	{ "nx" , PLY_FLOAT , PLY_FLOAT , int( offsetof( Type , normal.coords[0] ) ) , 0 , 0 , 0 , 0 } ,
 	{ "ny" , PLY_FLOAT , PLY_FLOAT , int( offsetof( Type , normal.coords[1] ) ) , 0 , 0 , 0 , 0 } ,
 	{ "nz" , PLY_FLOAT , PLY_FLOAT , int( offsetof( Type , normal.coords[2] ) ) , 0 , 0 , 0 , 0 } ,
 };
 template<>
-const PlyProperty NormalInfo< double , 3 >::PlyProperties[] =
+inline const PlyProperty NormalInfo< double , 3 >::PlyProperties[] =
 {
 	{ "nx" , PLY_FLOAT , PLY_DOUBLE , int( offsetof( Type , normal.coords[0] ) ) , 0 , 0 , 0 , 0 } ,
 	{ "ny" , PLY_FLOAT , PLY_DOUBLE , int( offsetof( Type , normal.coords[1] ) ) , 0 , 0 , 0 , 0 } ,
 	{ "nz" , PLY_FLOAT , PLY_DOUBLE , int( offsetof( Type , normal.coords[2] ) ) , 0 , 0 , 0 , 0 } ,
 };
 
-template< class Real , int Dim >
+template< class Real , unsigned int Dim >
 struct NormalAndColorInfo
 {
 	typedef NormalAndColor< Real , Dim > Type;
@@ -266,7 +268,7 @@ struct NormalAndColorInfo
 	};
 };
 template<>
-const PlyProperty NormalAndColorInfo< float , 3 >::PlyProperties[] =
+inline const PlyProperty NormalAndColorInfo< float , 3 >::PlyProperties[] =
 {
 	{ "nx"    , PLY_FLOAT , PLY_FLOAT , int( offsetof( Type , normal.coords[0] ) ) , 0 , 0 , 0 , 0 } ,
 	{ "ny"    , PLY_FLOAT , PLY_FLOAT , int( offsetof( Type , normal.coords[1] ) ) , 0 , 0 , 0 , 0 } ,
@@ -279,7 +281,7 @@ const PlyProperty NormalAndColorInfo< float , 3 >::PlyProperties[] =
 	{ "blue"  , PLY_UCHAR , PLY_FLOAT , int( offsetof( Type , color .coords[2] ) ) , 0 , 0 , 0 , 0 }
 };
 template<>
-const PlyProperty NormalAndColorInfo< double , 3 >::PlyProperties[] =
+inline const PlyProperty NormalAndColorInfo< double , 3 >::PlyProperties[] =
 {
 	{ "nx"    , PLY_FLOAT , PLY_DOUBLE , int( offsetof( Type , normal.coords[0] ) ) , 0 , 0 , 0 , 0 } ,
 	{ "ny"    , PLY_FLOAT , PLY_DOUBLE , int( offsetof( Type , normal.coords[1] ) ) , 0 , 0 , 0 , 0 } ,

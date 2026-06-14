@@ -283,7 +283,7 @@ struct RGBColor
 ///////////////////
 // FullPlyVertex //
 ///////////////////
-template< class _Real , int Dim , bool HasNormal , bool HasValue , bool HasColor >
+template< class _Real , unsigned int Dim , bool HasNormal , bool HasValue , bool HasColor >
 class FullPlyVertex
 {
 public:
@@ -366,7 +366,7 @@ public:
 	FullPlyVertex( const FullPlyVertex& v ) : FullPlyVertex() { point = v.point , memcpy( _vertexData , v._vertexData , _Size ); }
 	FullPlyVertex& operator = ( const FullPlyVertex& v )      { point = v.point , memcpy( _vertexData , v._vertexData , _Size ) ; return *this; }
 };
-template< class Real , int Dim , bool HasNormal , bool HasValue , bool HasColor , class _Real >
+template< class Real , unsigned int Dim , bool HasNormal , bool HasValue , bool HasColor , class _Real >
 FullPlyVertex< Real , Dim , HasNormal , HasValue , HasColor > operator * ( XForm< _Real , Dim+1 > xForm , FullPlyVertex< Real , Dim , HasNormal , HasValue , HasColor > p )
 {
 	FullPlyVertex< Real , Dim , HasNormal , HasValue , HasColor > _p = p;
@@ -375,8 +375,8 @@ FullPlyVertex< Real , Dim , HasNormal , HasValue , HasColor > operator * ( XForm
 	return _p;
 }
 
-template< class Real , int Dim , bool HasNormal , bool HasValue , bool HasColor > PlyProperty FullPlyVertex< Real , Dim , HasNormal , HasValue , HasColor >::_Properties[ FullPlyVertex::ReadComponents ];
-template< class Real , int Dim , bool HasNormal , bool HasValue , bool HasColor >
+template< class Real , unsigned int Dim , bool HasNormal , bool HasValue , bool HasColor > PlyProperty FullPlyVertex< Real , Dim , HasNormal , HasValue , HasColor >::_Properties[ FullPlyVertex::ReadComponents ];
+template< class Real , unsigned int Dim , bool HasNormal , bool HasValue , bool HasColor >
 PlyProperty* FullPlyVertex< Real , Dim , HasNormal , HasValue , HasColor >::Properties( void )
 {
 	int idx = 0;
@@ -395,17 +395,17 @@ PlyProperty* FullPlyVertex< Real , Dim , HasNormal , HasValue , HasColor >::Prop
 	return _Properties;
 }
 
-template< class Real , int Dim > using PlyVertex              = FullPlyVertex< Real , Dim , false , false , false >;
-template< class Real , int Dim > using PlyOrientedVertex      = FullPlyVertex< Real , Dim , true  , false , false >;
-template< class Real , int Dim > using PlyValueVertex         = FullPlyVertex< Real , Dim , false , true  , false >;
-template< class Real , int Dim > using PlyColorVertex         = FullPlyVertex< Real , Dim , false , false , true  >;
-template< class Real , int Dim > using PlyOrientedColorVertex = FullPlyVertex< Real , Dim , true  , false , true  >;
-template< class Real , int Dim > using PlyColorAndValueVertex = FullPlyVertex< Real , Dim , false , true  , true  >;
+template< class Real , unsigned int Dim > using PlyVertex              = FullPlyVertex< Real , Dim , false , false , false >;
+template< class Real , unsigned int Dim > using PlyOrientedVertex      = FullPlyVertex< Real , Dim , true  , false , false >;
+template< class Real , unsigned int Dim > using PlyValueVertex         = FullPlyVertex< Real , Dim , false , true  , false >;
+template< class Real , unsigned int Dim > using PlyColorVertex         = FullPlyVertex< Real , Dim , false , false , true  >;
+template< class Real , unsigned int Dim > using PlyOrientedColorVertex = FullPlyVertex< Real , Dim , true  , false , true  >;
+template< class Real , unsigned int Dim > using PlyColorAndValueVertex = FullPlyVertex< Real , Dim , false , true  , true  >;
 
-template< class Vertex , class Real , int Dim >
+template< class Vertex , class Real , unsigned int Dim >
 int PlyWritePolygons( const char* fileName , CoredMeshData< Vertex >*  mesh , int file_type , const Point< float , Dim >& translate , float scale , char** comments=NULL , int commentNum=0 , XForm< Real , Dim+1 > xForm=XForm< Real , Dim+1 >::Identity() );
 
-template< class Vertex , class Real , int Dim >
+template< class Vertex , class Real , unsigned int Dim >
 int PlyWritePolygons( const char* fileName , CoredMeshData< Vertex >*  mesh , int file_type , char** comments=NULL , int commentNum=0 , XForm< Real , Dim+1 > xForm=XForm< Real , Dim+1 >::Identity() );
 
 inline bool PlyReadHeader( const char* fileName , PlyProperty* properties , int propertyNum , bool* readFlags , int& file_type )
@@ -681,7 +681,7 @@ int PlyReadPolygons( const char* fileName,
 	return 1;
 }
 
-template< class Vertex , class Real , int Dim >
+template< class Vertex , class Real , unsigned int Dim >
 int PlyWritePolygons( const char* fileName , CoredMeshData< Vertex >* mesh , int file_type , const Point< float , Dim >& translate , float scale , char** comments , int commentNum , XForm< Real , Dim+1 > xForm )
 {
 	int i;
@@ -745,7 +745,7 @@ int PlyWritePolygons( const char* fileName , CoredMeshData< Vertex >* mesh , int
 	ply_close( ply );
 	return 1;
 }
-template< class Vertex , class Real , int Dim >
+template< class Vertex , class Real , unsigned int Dim >
 int PlyWritePolygons( const char* fileName , CoredMeshData< Vertex >* mesh , int file_type , char** comments , int commentNum , XForm< Real , Dim+1 > xForm )
 {
 	int i;

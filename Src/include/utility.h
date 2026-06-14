@@ -56,7 +56,6 @@ void ply_reader(const std::string& file, std::vector<std::pair<Point<Real, Dim>,
 	bool exist_normal = plyIn.getElement("vertex").hasProperty("nx") && plyIn.getElement("vertex").hasProperty("ny") && plyIn.getElement("vertex").hasProperty("nz");
 	std::vector<Real>nx, ny, nz;
 
-	// if exist normal
 	if(exist_normal){
 		nx = plyIn.getElement("vertex").getProperty<Real>("nx");
 		ny = plyIn.getElement("vertex").getProperty<Real>("ny");
@@ -83,17 +82,9 @@ void ply_reader(const std::string& file, std::vector<std::pair<Point<Real, Dim>,
 	}
 
 	// PLYInputPointStream<Real, Dim> ply(file.c_str());
-	// Point<Real, Dim> data;
-	// while (ply.nextPoint(data)) {
-	// 	for (unsigned int i = 0; i < Dim; i++) {
 	// 		p[i] = data[i];
 	// 		n[i] = data[i];
-	// 	}
-	// 	Normal<Real, Dim> normal(n);
 	// 	points_normals.push_back(std::make_pair(p,normal));
-	// }
-
-
 }
 
 template <class Real, unsigned int Dim>
@@ -138,7 +129,6 @@ bool output_ply(const std::string &outFile, const std::pair<std::vector<Point<Re
 }
 
 /// <summary>
-/// 根据颜色映射表 绘制ply。注意颜色表的个数等于flag中不同的值的个数
 /// </summary>
 /// <typeparam name="Real"></typeparam>
 /// <typeparam name="Dim"></typeparam>
@@ -297,7 +287,6 @@ Real dot(const Normal<Real, Dim> &n1, const Normal<Real, Dim> &n2)
 	return d;
 }
 
-// 返回弧度制夹角
 template <class Real, unsigned int Dim>
 Real calculate_angle(const Normal<Real, Dim> &n1, const Normal<Real, Dim> &n2)
 {
@@ -308,7 +297,7 @@ Real calculate_angle(const Normal<Real, Dim> &n1, const Normal<Real, Dim> &n2)
 	normalize(n2n);
 	Real d = dot(n1n, n2n);
 	if (d > 1)
-		d = 1;//防止arcos报错
+		d = 1;
 	else if (d < -1)
 		d = -1;
 	return acos(d);

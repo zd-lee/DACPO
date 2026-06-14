@@ -46,9 +46,9 @@ graph_arg::ConfidenceEdge::ConfidenceEdge(const FlipableNode* start, const Flipa
  }
 
 void graph_arg::align_to_root::visit(graph_arg::Tree* root) {
-    std::vector<std::vector<graph_arg::FlipableNode*>> g_n; // 存储每个子树的顶点列表
-    std::vector<graph_arg::FlipableNode*> tmp_g_n; // 临时图的顶点列表
-    std::vector<std::vector<ConfidenceEdge*>>  tmp_g_e; // 临时图的边矩阵
+    std::vector<std::vector<graph_arg::FlipableNode*>> g_n;
+    std::vector<graph_arg::FlipableNode*> tmp_g_n;
+    std::vector<std::vector<ConfidenceEdge*>>  tmp_g_e;
     
     g_n.push_back({root->_root});
     for(int i = 0;i<root->_childrens.size();i++){
@@ -114,14 +114,12 @@ std::vector<bool> BruteForceFlip::flip(graph_arg::FlipableGraph* g){
                 res[j] = g->_nodes[j]->is_inv();
             }
         }
-        //回退翻转
         for(int j = 0;j<g->_nodes.size();j++){
             if(i&(1<<j)){
                 g->_nodes[j]->flip();
             }
         }
 
-        // 检查是否有错误
         for(int j = 0;j<g->_nodes.size();j++){
             assert(g->_nodes[j]->is_inv() == ori_flip[j]);
         }
@@ -201,7 +199,7 @@ void graph_arg::FlipableGraph::apply_flip(const std::vector<bool> &node_status)
 {
     assert(node_status.size() == _nodes.size());
     for(int i = 0; i < _nodes.size(); i++){
-        if(node_status[i] == _nodes[i]->is_inv()){// 注意这里的逻辑
+        if(node_status[i] == _nodes[i]->is_inv()){
             _nodes[i]->flip();
         }
     }
@@ -244,8 +242,6 @@ graph_arg::FlipableGraph::FlipableGraph(nlohmann::json j)
             _edges[s][t] = new graph_arg::ConfidenceEdge(_nodes[s],_nodes[t],w.first,w.second,conf);
         }
     }
-    // boolize_weight();
-    // multiply_conf();
 }
 
 inline int find(std::vector<int>& father,int x){
@@ -262,7 +258,6 @@ Tree* Kruskal(std::vector<graph_arg::FlipableNode*> node, std::vector<graph_arg:
     for(int i = 0;i<node.size();i++){
         nid2idx[node[i]->id] = i;
     }
-    // 先得到一个无向的树
     std::vector<std::vector<int>> tmptree(node.size(),std::vector<int>());
     std::vector<int> father(node.size(),-1);
     for(int i = 0;i<node.size();i++){
@@ -281,7 +276,6 @@ Tree* Kruskal(std::vector<graph_arg::FlipableNode*> node, std::vector<graph_arg:
         cnt++;
     }    
     assert(cnt == node.size() - 1);
-    // 从树中随机选择一个点作为根节点,并生成一个树
     int root = rand()%node.size();
     std::vector<std::vector<int>> tree(node.size(),std::vector<int>());
     std::vector<bool> visited = std::vector<bool>(node.size(),false);
@@ -298,11 +292,9 @@ Tree* Kruskal(std::vector<graph_arg::FlipableNode*> node, std::vector<graph_arg:
             q.push(tmptree[cur][i]);
         }
     }
-    // 检查visited是否全为true
     for(int i = 0;i<visited.size();i++){
         assert(visited[i]);
     }
-    // 生成树
     std::vector<Tree*> res_tree(node.size(),nullptr);
     for(int i = 0;i<node.size();i++){
         res_tree[i] = new Tree(node[i]);
@@ -318,12 +310,9 @@ Tree* Kruskal(std::vector<graph_arg::FlipableNode*> node, std::vector<graph_arg:
 
 /**
  * @brief 
- * 对给定的点集和边界生成一个最小生成树
- * @param add_times 最多增加的边的倍数 
  * @return Tree* 
  */
 void AddEdgeByConf(const std::vector<FlipableNode*>& node, std::vector<graph_arg::ConfidenceEdge*>& edges,int add_times = 100){
-    // 根据边的置信度,增加边
     REAL min_conf = 1e10, max_conf = 0;
     for(int i = 0;i<edges.size();i++){
         min_conf = (std::min)(min_conf,edges[i]->confidence);
@@ -344,7 +333,6 @@ void AddEdgeByConf(const std::vector<FlipableNode*>& node, std::vector<graph_arg
 
 /**
  * @brief 
- * 将图中的每个连通分量生成一个随机生成树; **当且仅当两个顶点之间有双边时,两个顶点才会被连接**
  * @return std::vector<Tree *> 
  */
 std::vector<Tree *> graph_arg::FlipableGraph::get_random_forest()
@@ -397,7 +385,6 @@ void graph_arg::FlipableGraph::boolize_weight()
     }
 }
 
-// 将权重乘以置信度 以削弱坏边
 void graph_arg::FlipableGraph::multiply_conf()
 {
     for (int i = 0; i < _edges.size(); i++) {
@@ -638,7 +625,6 @@ nlohmann::json graph_arg::ChoseBestFlip::get_config()
 
 nlohmann::json graph_arg::ChoseBestFlip::get_log()
 {
-    // 根据"weight_sum"排序
     std::sort(_log_j.begin(),_log_j.end(),[](nlohmann::json a,nlohmann::json b){
         return a["weight_sum"].get<double>() < b["weight_sum"].get<double>();
     });
@@ -683,7 +669,6 @@ nlohmann::json graph_arg::SearchBestFlip::get_config()
 
 nlohmann::json graph_arg::SearchBestFlip::get_log()
 {
-    // 根据"weight_sum"排序
     std::sort(_log_j.begin(),_log_j.end(),[](nlohmann::json a,nlohmann::json b){
         return a["weight_sum"].get<double>() < b["weight_sum"].get<double>();
     });
@@ -692,7 +677,6 @@ nlohmann::json graph_arg::SearchBestFlip::get_log()
 
 std::vector<bool> graph_arg::OptimFlip::flip(FlipableGraph *g)
 {
-    // 根据grount truth的信息,对图进行翻转
     std::vector<bool> res(g->_nodes.size(),false);
     for(int i = 0;i<g->_nodes.size();i++){
         res[i] = !g->_nodes[i]->same_to_gt;
@@ -722,9 +706,7 @@ graph_arg::MIQPFlip::MIQPFlip(nlohmann::json j)
 
 std::vector<bool> graph_arg::MIQPFlip::flip(FlipableGraph* g)
 {
-    // 需要保证发送的单位数据是8字节的
     assert(sizeof(double) == 8);
-    // 距离矩阵平铺到一维数组中后拼接 得到data
     std::vector<double> w(g->_nodes.size()*g->_nodes.size(),0);
     std::vector<double> inv_w(g->_nodes.size()*g->_nodes.size(),0);
     std::vector<double> data(w.size() + inv_w.size());
@@ -750,7 +732,6 @@ std::vector<bool> graph_arg::MIQPFlip::flip(FlipableGraph* g)
     lzd_tools::Socket* socket = new lzd_tools::Socket(_ip,_port);
     assert(socket->connectToServer());
 
-    // 发送请求头
     nlohmann::json request;
     request["function_name"] = "MIQP";
     request["data_size"] = data.size();
@@ -759,7 +740,6 @@ std::vector<bool> graph_arg::MIQPFlip::flip(FlipableGraph* g)
         std::cerr << "Failed to send request" << std::endl;
         return std::vector<bool>(g->_nodes.size());
     }
-    // 接受确认
     std::string response_buff;
     nlohmann::json response;
 
@@ -775,7 +755,6 @@ std::vector<bool> graph_arg::MIQPFlip::flip(FlipableGraph* g)
         return std::vector<bool>(g->_nodes.size());
     }
 
-    // 发送数据
     socket->SendDoubleArray(data);
     std::vector<int32_t> res(g->_nodes.size());
     socket->ReceiveIntArray(res, g->_nodes.size());

@@ -4,21 +4,21 @@
 
 /***********************************ipsr status filter***********************************************/
 /**
- * @brief 判断ipsr是否处于某种状态
+ * @brief Checks whether an IPSR handle is in a specific state.
  */
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class BasicIPSRFilter {
 public:
     virtual bool check(const IPSR_HANDLE_P handle) = 0;
     virtual nlohmann::json get_config() = 0;
 };
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class ModFilter : public BasicIPSRFilter<REAL,DIM> {
     int mod;
 public:
     bool check(const IPSR_HANDLE_P handle) {
-        // 有时候_epoch与迭代的次数会不一致
+        // _epoch can differ from the iteration count.
         return handle->avg_max_var_log.size() % mod == 0;
     }
 
@@ -34,9 +34,9 @@ public:
     }
 };
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class ShockingIPSRFilter : public BasicIPSRFilter<REAL,DIM> {
-    int window_size;//窗口大小 查看最近window_size个epoch的信息    
+    int window_size;
 public:
     ShockingIPSRFilter(int window_size = 5) {
         this->window_size = window_size;
@@ -44,7 +44,7 @@ public:
 
     bool check(const IPSR_HANDLE_P handle) {
         bool flag = true;
-        BasicIPSRFilter<REAL, DIM>* f = new ModFilter<REAL, DIM>(5);// 防止不断reinit。
+        BasicIPSRFilter<REAL, DIM>* f = new ModFilter<REAL, DIM>(5);
         flag = flag && f->check(handle);
         int count_inc = 0, count_dec = 0;
         auto var_log = handle->avg_max_var_log;
@@ -71,7 +71,7 @@ public:
     }
 };
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class SufficientEpochFilter : public BasicIPSRFilter<REAL, DIM> {
     int _at_least_epoch_count;
 
@@ -92,7 +92,7 @@ public:
     }
 };
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class ForbidFilter : public BasicIPSRFilter<REAL, DIM> {
 public:
     bool check(const IPSR_HANDLE_P handle) {
@@ -107,7 +107,7 @@ public:
 };
 
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 bool filter_ipsr(const IPSR_HANDLE_P handle,const std::vector<BasicIPSRFilter<REAL,DIM>*> filters) {
     for (auto filter : filters) {
         if (!filter->check(handle)) {
@@ -119,7 +119,7 @@ bool filter_ipsr(const IPSR_HANDLE_P handle,const std::vector<BasicIPSRFilter<RE
 
 
 /***********************************ipsr vistor***********************************************/
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class IpsrController{
 public:
     virtual int iter(IPSR_HANDLE_P _handle) = 0;
@@ -129,23 +129,18 @@ public:
 
 /**
  * @brief 
- * 初步规划: 负责ipsr_hp的reinit、mincut等行为的调用
+ * Coordinates actions such as reinitialization and min-cut updates.
  */
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class SingleIpsrController : public IpsrController<REAL,DIM> {
-    //std::vector<BasicIPSRFilter<REAL,DIM>*> _reinit_filters;
-    //std::vector<BasicIPSRFilter<REAL,DIM>*> _mincut_filters;
-    int _minimum_to_iter; // op数量小于这个值时不执行。
-    // 增加配置项时，记得在get_config中添加
-    int _save_op;// 每隔_save_op轮存一个op
+    int _minimum_to_iter;
+    int _save_op;
     int _save_mesh;
-    NormalEstimation<REAL, DIM>* _estimator; //如不为空,则第一次调用iter时使用
+    NormalEstimation<REAL, DIM>* _estimator;
 
 public:
     //
     SingleIpsrController(
-        //std::vector<BasicIPSRFilter<REAL, DIM>*> reinit_filters = std::vector<BasicIPSRFilter<REAL, DIM>*>(),
-        //std::vector<BasicIPSRFilter<REAL, DIM>*> mincut_filters = std::vector<BasicIPSRFilter<REAL, DIM>*>(),
         int save_op = -1,
         int save_mesh = -1,
         NormalEstimation<REAL, DIM>* estimator = nullptr
@@ -153,7 +148,6 @@ public:
         ):_estimator(estimator) {
         //this->_reinit_filters = reinit_filters;
         //this->_mincut_filters = mincut_filters;
-        //_minimum_to_iter = minimum_to_iter;
         _save_op = save_op;
         _save_mesh = save_mesh;
     }
@@ -163,20 +157,12 @@ public:
     nlohmann::json get_config() {
         nlohmann::json j;
         //j["minimum_to_iter"] = _minimum_to_iter;
-        //for (auto filter : _reinit_filters) {
         //    j["reinit_filters"].push_back(filter->get_config());
-        //}
-        //for (auto filter : _mincut_filters) {
         //    j["mincut_filters"].push_back(filter->get_config());
-        //}
         return j;
     }
 
     int iter(IPSR_HANDLE_P _handle) {
-        //if (_handle->_points_normals.size() < _minimum_to_iter) {
-        //    printf("_points_normals size = %d,too few points to iter, skip!!\n",_handle->_points_normals.size());
-        //    return 0;
-        //}
         if ((_handle->_epoch == -1 || _handle->_epoch == 0) && _estimator != nullptr)_handle->init_op_normal(_estimator);
         int ep = _handle->iter();
          if (_save_op >0 && (ep % _save_op) == 0) {
@@ -185,20 +171,14 @@ public:
          if (_save_mesh > 0 && (ep % _save_mesh) == 0) {
              _handle->save_current_mesh("/temp/");
          }
-        //if (filter_ipsr(_handle, _reinit_filters)) {
-        //    int seed = rand();
         //     _handle->init_op_normal(new RandomInit<REAL, DIM>(seed));
-        //}
-
-        //if (filter_ipsr(_handle, _mincut_filters)) {
         //    _handle->min_cut_self();
-        //}
         return ep;
     }
 
     nlohmann::json get_log() {
         assert(false);
-        // controller的log,定义不明晰。因为ipsr_handle也有log。
+        // Controller-level log; IPSR handles also keep their own logs.
         nlohmann::json j;
         j["reinit_times"] = -1;
         j["mincut_times"] = -1;
@@ -210,38 +190,41 @@ public:
 
 /**
  * @brief 
- * 存储原void ipsr(...)的参数 统一管理
+ * Stores the former ipsr(...) parameters in one place.
  * @tparam REAL 
  * @tparam DIM 
  */
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class IPSR_Factory{
     std::vector<std::string> _cmd;
     std::string _input_name;
     std::string _output_path;
     int _iters;
     int _k_neighbors;
-    int _seed; // 历史遗留问题;
+    int _seed;
+    int _psr_threads;
     double _pointweight;
     
-    // Factory只是统一存储参数, 便于在不同场景创建ipsrhp;
     nlohmann::json get_config() {
         assert(false);
     }
 
 public:
 
-    // 使用原入口参数
     IPSR_Factory(const std::string& input_name, const std::string& output_path,
-    int iters, double pointweight, int depth, int k_neighbors,int seed = 0
+    int iters, double pointweight, int depth, int k_neighbors, int seed = 0, int psr_threads = 4
     ){
-        std::string command = "PoissonRecon --in " + input_name + " --out " + output_path + "  --bType 2 --depth " + to_string(depth) + " --pointWeight " + to_string(pointweight);
+        if (psr_threads < 1) {
+            psr_threads = 1;
+        }
+        std::string command = "PoissonRecon --in " + input_name + " --out " + output_path + "  --bType 2 --depth " + to_string(depth) + " --pointWeight " + to_string(pointweight) + " --threads " + to_string(psr_threads);
         _cmd = split(command);
         _input_name = input_name;
         _output_path = output_path;
         _iters = iters;
         _k_neighbors = k_neighbors;
         _seed = seed;
+        _psr_threads = psr_threads;
         _pointweight = pointweight;
     }
 
@@ -252,9 +235,9 @@ public:
         _iters = factory._iters;
         _k_neighbors = factory._k_neighbors;
         _seed = factory._seed;
+        _psr_threads = factory._psr_threads;
     }
 
-    // 获得IPSR对象; op对象根据input_name读取
     IPSR_HANDLE_P create_single_ipsr_handle(
         int (*_update_plan)(Period& p),
         NormalEstimation<REAL, DIM>* estimator
@@ -264,7 +247,6 @@ public:
         return create_ipsr_from_op(op,_update_plan,estimator);
     }
 
-    // 获得以任意op为输入的IPSR对象
     IPSR_HANDLE_P create_ipsr_from_op(
         POINTS_NORMALS op,
         int (*_update_plan)(Period& p),
@@ -280,22 +262,23 @@ public:
     }
 
 
-/******************************************************************一些常用的ipsr handle****************************************************************************/
+/****************************************************************** Common IPSR handles ****************************************************************************/
 
-    IPSR_HANDLE_P get_classic_neumman_ipsr_handle(int seed = _seed){
+    IPSR_HANDLE_P get_classic_neumman_ipsr_handle(int seed = -1){
+        if (seed < 0) seed = _seed;
         return create_single_ipsr_handle(neumman_ind_ipsr,new RandomInit<REAL, DIM>(seed));
     }
     
-    IPSR_HANDLE_P get_classic_dirichlet_ipsr_handle(int seed = _seed) {
+    IPSR_HANDLE_P get_classic_dirichlet_ipsr_handle(int seed = -1) {
+        if (seed < 0) seed = _seed;
         return create_single_ipsr_handle(diri_ind_ipsr,new RandomInit<REAL, DIM>(seed));
     }
     
 
-/******************************************************************一些依赖这组参数的help func****************************************************************************/
+/****************************************************************** Helpers using the factory parameters ***********************************************************/
     
-    // 单纯的降采样,同时变换回原空间
-    // 注意，psr的_sample_points实质是完成了三件事：0.归一化点 1.使用八叉树降采样 2.给降采样后的点赋权。这个方法相当于只用到了1的结果 
-    // @depth 降采样的层数。如果不指定，则不进行下采样
+    // Down-sample points and transform them back to the original space.
+    // PSR sampling also normalizes and weights points; this helper only keeps the octree sampling result.
     POINTS_NORMALS down_sample_points(const POINTS_NORMALS& ori, int depth = -1){
         if (depth == -1) {
             return POINTS_NORMALS(ori);
@@ -311,7 +294,7 @@ public:
             argv_str[i] = p;
         }
         POINTS_NORMALS op = sample_points_entrance<REAL,DIM>((int)argv_str.size(),argv_str.data(),ori,iXForm,&weight_sample);
-        // 将op变换回原空间
+        // Transform sampled points back to the original space.
         for (int i = 0; i < op.size(); i++) {
             op[i].first = iXForm * op[i].first;
         }
@@ -319,8 +302,7 @@ public:
         return op;
     }
 
-    // 从点云中重建mesh
-    // 如果depth==-1，则使用默认的depth=10来重建
+    // Reconstruct a mesh from oriented points. If depth == -1, use depth 10.
     MESH get_mesh_from_points_normals(const POINTS_NORMALS& op){
         XForm<REAL, DIM + 1> iXForm;
         std::vector<double> weight_sample;
@@ -337,7 +319,7 @@ public:
         }
         POINTS_NORMALS sampled_op = sample_points_entrance<REAL,DIM>((int)argv_str.size(),argv_str.data(),op,iXForm,&weight_sample);
         auto mesh = poisson_reconstruction_entrance<REAL,DIM>((int)argv_str.size(),argv_str.data(),sampled_op,&weight_sample);
-        // 变换回原空间
+        // Transform the mesh back to the original space.
         for (int i = 0; i < mesh.first.size(); i++) {
             mesh.first[i] = iXForm * mesh.first[i];
         }
@@ -380,7 +362,6 @@ public:
         filename += "_nb_" + to_string(_k_neighbors);
         filename += "_sd_" + to_string(_seed);
         filename += "_pt_" + to_string(_pointweight);
-        //std::string res_name = filename;
         return filename;
     }
 

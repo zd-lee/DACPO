@@ -89,9 +89,8 @@ KnnGraph::KnnGraph(const Eigen::MatrixXd& pts, int k, double radius)
 
 KnnGraph::KnnGraph(const Eigen::MatrixXd& pts, int k) : _pts(pts), _k(k)
 {
-    // TODO 可以优化一下
     _k = std::min(k, (int)pts.rows());
-    assert(_k > 1); // 不会有大小为1的块吧...
+    assert(_k > 1);
     _radius = std::numeric_limits<double>::max();
     int N = pts.rows();
     _graph_idx = std::vector<std::vector<int>>(N, std::vector<int>(_k-1));
@@ -199,7 +198,6 @@ std::vector<bool> MaskFieldPropagation::_xie_propagation_points_in_order(const E
 }
 
 static std::vector<int> get_random(int num,int min, int max){
-    // 随机选择times个点作为起始点(使用固定的随机种子)
     std::set<int> start_points;
     std::mt19937 gen(0);
     std::uniform_int_distribution<int> dis(min, max);
@@ -257,7 +255,6 @@ std::vector<bool> MaskFieldPropagation::xie_propagation_points_on_bfs_tree(const
 {
     int N = pts.rows();
     std::vector<bool> res(N, false);
-    // 建立KnnGraph
     KnnGraph bfs_graph(pts, knngraph_k, knngraph_radius);
     KnnGraph neibor_graph(pts, mask_size);
     int K = neibor_graph.get_shortest_nei();

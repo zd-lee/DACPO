@@ -1,5 +1,4 @@
 #include "orientation_consistency.h"
-//#include <png_pp/png.hpp>
 #include <queue>
 
 std::vector<std::vector<std::pair<int, int>>> Rasterlization::ImageBfsOnNotEmptyPixel(Rasterlization::Image* img, Rasterlization::HasEdge* has_edge)
@@ -47,44 +46,33 @@ Eigen::Vector2d Rasterlization::viewportTransform(const Eigen::Vector2d &cxy, in
 
 bool Rasterlization::isInsideTriangle(const Eigen::Vector2d &pxyP, const Eigen::Vector2d &pxyA, const Eigen::Vector2d &pxyB, const Eigen::Vector2d &pxyC)
 {
-    //// 以A为原点,AB、AC为坐标轴，计算P的坐标(u,v)
-    //double u = (pxyP - pxyA).dot(pxyB - pxyA) / (pxyB - pxyA).dot(pxyB - pxyA);
-    //double v = (pxyP - pxyA).dot(pxyC - pxyA) / (pxyC - pxyA).dot(pxyC - pxyA);
-    //// 判断P是否在三角形内部
-    //return u >= 0 && v >= 0 && u + v <= 1;
     return true;
 
 }
 
 inline double minin3(double a, double b, double c)
 {
-    return min(min(a, b), c);
+    return std::min(std::min(a, b), c);
 }
 
 void Rasterlization::updatePixelDepthBuffer(Eigen::MatrixXd &zBuffer, Eigen::MatrixXi &pixelSource, const Eigen::Vector2d &pxyA, const Eigen::Vector2d &pxyB, const Eigen::Vector2d &pxyC, double d, int i)
 {
-    // 计算三角形的边界
     int minX = std::floor(minin3(pxyA.x(), pxyB.x(), pxyC.x()));
     int minY = std::floor(minin3(pxyA.y(), pxyB.y(), pxyC.y()));
-    int maxX = std::ceil(max(max(pxyA.x(), pxyB.x()), pxyC.x()));
-    int maxY = std::ceil(max(max(pxyA.y(), pxyB.y()), pxyC.y()));
+    int maxX = std::ceil(std::max(std::max(pxyA.x(), pxyB.x()), pxyC.x()));
+    int maxY = std::ceil(std::max(std::max(pxyA.y(), pxyB.y()), pxyC.y()));
 
-    // 剔除边界外的像素
     if (minX < 0 || minY < 0 || maxX >= zBuffer.cols() || maxY >= zBuffer.rows())
     {
         return;
     }
-    // 遍历边界内的像素
     for (int y = minY; y <= maxY; ++y)
     {
         for (int x = minX; x <= maxX; ++x)
         {
-            // 判断像素是否在三角形内部
             Eigen::Vector2d pixel(x + 0.5, y + 0.5);
             if (isInsideTriangle(pixel, pxyA, pxyB, pxyC))
             {
-                // 计算像素的深度d
-                // 如果d小于zBuffer[y][x],则更新zBuffer[y][x] = d，并更新pixelSource[y][x] = i
                 if (d < zBuffer(y, x))
                 {
                     zBuffer(y, x) = d;
@@ -131,12 +119,6 @@ Eigen::Matrix4d Rasterlization::getOrthoMatrix(double left, double right, double
 
 /**
  * @brief Get the Perspective Matrix object
- * @param left 近裁剪面的左边界
- * @param right 近裁剪面的右边界
- * @param bottom 近裁剪面的下边界
- * @param top 近裁剪面的上边界
- * @param _near 近裁剪面的距离
- * @param _far 远裁剪面的距离
  * @return Eigen::Matrix4d 
  */
 static Eigen::Matrix4d getPerspectiveMatrix(double left, double right, double bottom, double top, double _near, double _far)
@@ -151,7 +133,6 @@ static Eigen::Matrix4d getPerspectiveMatrix(double left, double right, double bo
 }
 
 
-// 不生成图片,只计算三角网格的可见性 (TODO 其实还是计算了图片,只是没有保存  可以考虑优化)
 std::vector<int> Rasterlization::_computeVisibility(
     const std::vector<Rasterlization::Triangle> &triangles, const std::vector<Rasterlization::Vertex> &vertices, 
     const Eigen::Vector3d &viewPoints, const Eigen::Vector3d &lookat, const Eigen::Vector3d &up, 
@@ -167,17 +148,13 @@ std::vector<int> Rasterlization::_computeVisibility(
 
 void Rasterlization::_rasterlization(
     Rasterlization::Image* img,
-    // 数据
     const std::vector<Rasterlization::Triangle> &triangles, const std::vector<Rasterlization::Vertex> &vertices, 
-    // 视角相关
     const Eigen::Vector3d &viewPoints, const Eigen::Vector3d &lookat, const Eigen::Vector3d &up,
-    // output 供三角网格使用
     std::vector<int> &visibilityList, std::vector<double> &triangles_depths,
     Rasterlization::PROJECTION_TYPE projection
 )
 { 
     assert(triangles.size() > 0);    
-    // 计算视角矩阵，将vertex投影到view space
     Eigen::Matrix4d viewMatrix = calculateViewMatrix(viewPoints, lookat, up);
     Eigen::MatrixX4d xyzd(vertices.size(), 4);
     for (size_t i = 0; i < vertices.size(); ++i)
@@ -186,7 +163,6 @@ void Rasterlization::_rasterlization(
     }
     Eigen::MatrixX4d vxyzd = (viewMatrix * xyzd.transpose()).transpose();   
  
-    // 计算正交投影矩阵 (TODO 由于bbox操作麻烦 暂时先不优化)
     double rangeScale = 1.1f;
     Eigen::Matrix4d (*getProjectionMatrix)(double, double, double, double, double, double) = nullptr;
     if(projection == 0){
@@ -200,12 +176,10 @@ void Rasterlization::_rasterlization(
         vxyzd.col(1).minCoeff() * rangeScale, vxyzd.col(1).maxCoeff() * rangeScale,
         vxyzd.col(2).minCoeff(), vxyzd.col(2).maxCoeff()
     );
-    // 将vertex投影到裁剪空间
     Eigen::MatrixX4d cxyzd = (project * vxyzd.transpose()).transpose();
     Eigen::MatrixX2d cxy = cxyzd.leftCols(2);
     
-    // 遍历三角形，更新zBuffer, triangle_id
-    double max_depth_gap = 0; // 单个三角形内最大深度差
+    double max_depth_gap = 0;
     for (size_t i = 0; i < triangles.size(); ++i)
     {
         Eigen::Vector2d pxyA = viewportTransform(cxy.row(triangles[i].v1).transpose(), img->width, img->height);
@@ -213,9 +187,9 @@ void Rasterlization::_rasterlization(
         Eigen::Vector2d pxyC = viewportTransform(cxy.row(triangles[i].v3).transpose(), img->width, img->height);
         double zA = cxyzd.row(triangles[i].v1).z(), zB = cxyzd.row(triangles[i].v2).z(), zC = cxyzd.row(triangles[i].v3).z();
         triangles_depths[i] = (zA + zB + zC) / 3.0f;
-        max_depth_gap = max(max_depth_gap, abs(zA - zB));
-        max_depth_gap = max(max_depth_gap, abs(zA - zC));
-        max_depth_gap = max(max_depth_gap, abs(zB - zC));
+        max_depth_gap = std::max(max_depth_gap, std::abs(zA - zB));
+        max_depth_gap = std::max(max_depth_gap, std::abs(zA - zC));
+        max_depth_gap = std::max(max_depth_gap, std::abs(zB - zC));
         double d = triangles_depths[i];
         updatePixelDepthBuffer(img->zBuffer, img->triangle_id, pxyA, pxyB, pxyC, d, i);
     }
@@ -223,7 +197,6 @@ void Rasterlization::_rasterlization(
     img->cal_boundary(max_depth_gap);
     img->max_depth_gap = max_depth_gap;
 
-    // 遍历pixelSource，根据pixelSource更新visibilityList
     for (int y = 0; y < img->height; ++y)
     {
         for (int x = 0; x < img->width; ++x)
@@ -245,7 +218,6 @@ Eigen::Vector3d get_face_normal(Eigen::Vector3d a, Eigen::Vector3d b, Eigen::Vec
 }
 
 /**
-*@brief 获得可见面片的一致性 consistency = max(内侧,外侧)
 */
 double Rasterlization::_orientation_consistence(
     Rasterlization::Image *img,
@@ -254,7 +226,6 @@ double Rasterlization::_orientation_consistence(
     std::vector<int>& orient_flag,Rasterlization::PROJECTION_TYPE projection
     )
 {
-    // TODO 如果重复调用,可以将visibilityList缓存起来
     auto triangles_depths = std::vector<double>(triangles.size(), 0.0f);
     auto visibilityList = std::vector<int>(triangles.size(), 0);
     Rasterlization::_rasterlization(img, triangles, vertices, viewPoints, lookat, up,visibilityList, triangles_depths, projection);
@@ -313,11 +284,7 @@ double Rasterlization::_orientation_consistence(
             }
         }
     }
-  //  if (NO_orientaion) {
-   //     printf("%d pixel has undefined orientation\n", NO_orientaion);
- //   }
-    // return (double)max(inner_count,outer_count)/ (double)(inner_count+outer_count);// 比例会导致一些看得面片比较少的视角得分过高
-    return (double)max(inner_count,outer_count);
+    return static_cast<double>(std::max(inner_count, outer_count));
 }
 
 /**
@@ -364,12 +331,12 @@ std::vector<Eigen::Vector3d> get_dodecahedron_vertex()
 lzd_tools::FiniteMap get_orient_color()
 {
     lzd_tools::FiniteMap orient_color;
-    orient_color.insert({ SEE_INNER, { 0, 44, 90} });//蓝色
-    orient_color.insert({ SEE_OUTER, { 175, 102, 23 } });//橙色
-    orient_color.insert({ NOT_SEEN, { 176, 168, 166 } });//灰色
-    orient_color.insert({VIEW_POINT, { 219, 103, 76 } });//红色
-    orient_color.insert({LOOK_AT_POINT, { 146, 50, 53 } });//红色
-    orient_color.insert({ PARALLEL,{0,0,0} });// 黑色
+    orient_color.insert({ SEE_INNER, { 0, 44, 90} });
+    orient_color.insert({ SEE_OUTER, { 175, 102, 23 } });
+    orient_color.insert({ NOT_SEEN, { 176, 168, 166 } });
+    orient_color.insert({VIEW_POINT, { 219, 103, 76 } });
+    orient_color.insert({LOOK_AT_POINT, { 146, 50, 53 } });
+    orient_color.insert({ PARALLEL,{0,0,0} });
     return orient_color;
 }
 
@@ -404,26 +371,8 @@ std::vector<std::pair<int, int>> Rasterlization::Image::get_not_empty_neibor_pix
     return res;
 }
 
-// std::vector<Rasterlization::PixelData> Rasterlization::Image::get_neibor_pixel_data(int i, int j)
-// {
-//     std::vector<PixelData> res;
-//     auto neibor_idx = get_neibor_pixel_idx(i,j);
-//     for(auto idx:neibor_idx){
 //         res.push_back(get_pixel_data(idx.first,idx.second));
-//     }
-//     return res;
-// }
-
-// std::vector<PixelData> Rasterlization::Image::get_not_empty_neibor_pixel_data(int i, int j)
-// {
-//     std::vector<PixelData> res;
-//     auto neibor_idx = get_not_empty_neibor_pixel_idx(i,j);
-//     for(auto idx:neibor_idx){
 //         res.push_back(get_pixel_data(idx.first,idx.second));
-//     }
-//     return res;
-// }
-
 bool Rasterlization::Image::is_empty(int i, int j)
 {
     return zBuffer(i,j) >= 1e9;
@@ -431,7 +380,6 @@ bool Rasterlization::Image::is_empty(int i, int j)
 
 void Rasterlization::Image::cal_boundary(double eps)
 {
-    // 如果像素点的上下左右四个点中，存在深度值差值大于eps的，则认为是边界像素
     for (int y = 1; y < height-1; ++y)
     {
         for (int x = 1; x < width-1; ++x)
@@ -481,73 +429,25 @@ void Rasterlization::Image::cal_boundary(std::vector<int> &tri_type,int flag)
 
 void Rasterlization::Image::draw(std::string path)
 {
-//    // 生成图片
    printf("install pngpp to draw\n");
 //    png::image<png::rgb_pixel> image(width, height);
-//    // inside绘制成蓝色，outside绘制成橙色，边界绘制成红色
-//    for (int y = 0; y < height; ++y)
-//    {
-//        for (int ix = width-1; ix >0; --ix)
-//        {
-//            int x = width - ix -1;
-//            if (is_inside(y, x) == 1)
-//            {
 //                image[y][ix] = png::rgb_pixel(0, 44, 90);
-//            }
-//            else if (is_inside(y, x) == 0)
-//            {
 //                image[y][ix] = png::rgb_pixel(175, 102, 23);
-//            }
-//            else
-//            {
 //                image[y][ix] = png::rgb_pixel(176, 168, 166);
-//            }
-
-//            if (is_boundary(y, x) == DEPTH_BOUNDARY)
-//            {
 //                image[y][ix] = png::rgb_pixel(255, 0, 0);
-//            }
-//            if (is_boundary(y, x) == MESH_BOUNDARY)
-//            {
 //                image[y][ix] = png::rgb_pixel(0, 255, 255);
-//            }
-//        }
-//    }
 //    image.write(path);
 
 }
 
 void Rasterlization::Image::draw_cluster(std::string path)
 {
-   // 生成图片
    printf("install pngpp to draw cluster\n");
 //    png::image<png::rgb_pixel> image(width, height);
-//    for (int y = 0; y < height; ++y)
-//    {
-//        for (int ix = width - 1; ix > 0; --ix)
-//        {
-//            int x = width - ix - 1;
            
-//            if (is_boundary(y, x) == DEPTH_BOUNDARY){
 //                image[y][ix] = png::rgb_pixel(255, 0, 0);
-//                continue;
-//            }
-//            if (is_boundary(y, x) == MESH_BOUNDARY){
 //                image[y][ix] = png::rgb_pixel(0, 255, 255);
-//                continue;
-//            }
-
-//            if (cluster_id(y, x) == -1)
-//            {
 //                image[y][ix] = png::rgb_pixel(255, 255, 255);
-//            }
-//            else
-//            {
-//                int id = cluster_id(y, x) % 100;
-//                std::vector<unsigned int> color = global_var::color_map_100[id];
 //                image[y][ix] = png::rgb_pixel(color[0], color[1], color[2]);
-//            }
-//        }
-//    }
 //    image.write(path);
 }

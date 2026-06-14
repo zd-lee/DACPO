@@ -56,8 +56,6 @@ nlohmann::json ConfigManager::get_config_in_config_floder(std::string filename,b
     // nlohmann::json j = tj.get_config();
     // JsonConfig default_tj(ConfigManager::default_config_floder + filename);
     // nlohmann::json default_j = default_tj.get_config();
-    // merge_json(default_j, j);
-    // return default_j;
     return tj.get_config();
 
 }
@@ -67,7 +65,6 @@ void merge_json(nlohmann::json& base, const nlohmann::json& overrideObj)
 {
     for (auto& element : overrideObj.items()) {
         if (element.value().is_object()) {
-            // 如果要覆盖的对象是嵌套的JSON对象，则递归调用
             if (base.find(element.key()) != base.end() && base[element.key()].is_object()) {
                 merge_json(base[element.key()], element.value());
             }
@@ -87,7 +84,6 @@ void merge_json(nlohmann::json& base, const nlohmann::json& overrideObj)
             }
         }
         else {
-            // 如果要覆盖的对象不是嵌套的JSON对象，则直接覆盖
             base[element.key()] = element.value();
         }
     }

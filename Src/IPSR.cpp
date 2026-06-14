@@ -1,5 +1,4 @@
 #include <IPSR.h>
-//#include <PoissonRecon.h>
 
 std::map<int (*)(Period& p),std::string> update_plane_namelist{
 	{interact_update,"interact_update"},
@@ -12,13 +11,11 @@ std::map<int (*)(Period& p),std::string> update_plane_namelist{
     {specify_update,"specify_update"}
 };
 
-// std::map<int,std::string> init_type_namelist={
 // 	{INIT_RANDOM,"INIT_RANDOM"},
 // 	{INIT_PCA,"INIT_PCA"},
 // 	{INIT_PCL_EST_NORMAL,"INIT_PCL_EST_NORMAL"},
 // 	{INIT_NOTHING,"INIT_NOTHING"},
 // };
-// 交互式更新
 int interact_update(Period& p) {
     if(p.p_ep == nullptr || p.p_old_var == nullptr || p.p_new_var == nullptr || p.p_cmd == nullptr){
         return -1;
@@ -26,7 +23,6 @@ int interact_update(Period& p) {
     p.print_mesh = 1;
     static int count = 0;
     if(count  > 0){
-        //printf("count = %d\n", count);
         count--;
         return 0;
     }
@@ -174,8 +170,6 @@ int comb_update6(Period& p) {
 
 /**
  * @brief 
- * 前20次使用Neumann+INDIRECT_MAPPING,最后10次固定使用Dirichlet+DIRECT_MAPPING
- * 中间的情况根据变量的变化来判断
  * @param p 
  * @return int 
  */
@@ -230,15 +224,12 @@ int comb_update7(Period& p) {
 
 /**
  * @brief 
- * 前10次使用Dirichlet+INDIRECT_MAPPING,以得到一个比较稳定的初值
- * 此后与comb_update7一致
  * @return int 
  */
 int comb_update8(Period& p) {
     if(p.p_ep == nullptr || p.p_old_var == nullptr || p.p_new_var == nullptr || p.p_cmd == nullptr){
         return -1;
     }
-    // 注意 这个阶段的ep不能大于comb8第一阶段的ep
     if(*(p.p_ep) < 10){
         change_args(*(p.p_cmd), "--bType", "2");
         *p.update_strategy = INDIRECT_MAPPING;
@@ -307,9 +298,5 @@ Period::Period()
 {    
 }
 
-//lzd_tools::FiniteMap get_mincut_colormap() {
-//    auto colormap = lzd_tools::FiniteMap({ {SOURCE_PART_LABEL, {255,0,0}},{SINK_PART_LABEL, {0,255,0}},{SOURCE_LABEL, {0,0,0}},{SINK_LABEL, {0,0,255}} });
-//    // 考虑其他情况
 //    colormap.insert({ -1, {255,255,255} });
-//    return colormap;
 //}

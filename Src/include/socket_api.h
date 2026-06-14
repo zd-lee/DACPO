@@ -1,6 +1,5 @@
 /**
  * @file socket_api.h
- * @brief 使用socket进行通信的API 
  * @version 0.1
  * @date 2024-08-10
  * @copyright Copyright (c) 2024
@@ -21,9 +20,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+using SOCKET = int;
+constexpr SOCKET INVALID_SOCKET = -1;
+constexpr int SOCKET_ERROR = -1;
 #endif
 
+#if defined(_WIN32)
 #pragma comment(lib, "ws2_32.lib")
+#endif
 
 namespace lzd_tools{
     class Socket {
@@ -36,8 +40,6 @@ namespace lzd_tools{
 
         /**
          * @brief 
-         * @param data 用于接收数据的vector
-         * @param expectedSize 期望接收的数据大小，即data的项数
          */
         bool ReceiveDoubleArray(std::vector<double>& data, size_t expectedSize);
         bool ReceiveIntArray(std::vector<int>& data, size_t expectedSize);
@@ -53,5 +55,4 @@ namespace lzd_tools{
         void cleanupWinsock();
     };
 }
-
 

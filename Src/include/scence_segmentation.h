@@ -4,10 +4,8 @@
 
 /**
  * @brief 
- * 给定一个点云，将其分割为多个部分,每个部分对应一个整数标签
- * 注意：标签从0开始，连续递增
  * */
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class Segmenter{
 public:
     virtual nlohmann::json get_config() = 0;
@@ -17,7 +15,6 @@ public:
         return relabel(segment(ops));
     }
 
-    // 将标签重新编号为0,1,2,3...
     std::vector<int> relabel(std::vector<int> labels){
         std::map<int, int> label_map;
         int label = 0;
@@ -34,12 +31,10 @@ public:
 
 /**
  * @brief 
- * 先后使用多个segmenter进行分割
- * 例如先使用DisjointSetCluster进行分割（开销较小），然后再使用SpectralSegmenter进行分割
  */
 class CombSegmenter : public Segmenter{
     std::vector<Segmenter*> _segmenters;
-    double _mininum_rate; //当块的大小小于点云总数的_mininum_rate时，不再继续分割
+    double _mininum_rate;
 
 public:
     CombSegmenter(std::vector<Segmenter*> segmenters, double mininum_rate){
@@ -81,7 +76,7 @@ public:
 };
 
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class DisjointSetCluster : public Segmenter<REAL, DIM>{
     double _eps;
     int _max_neighbers;
@@ -142,10 +137,10 @@ public:
 
 
 
-template<typename REAL, int DIM>
+template<typename REAL, unsigned int DIM>
 class SpectralSegmenter : public Segmenter<REAL, DIM>{
-    float _mininum_rate; //当块的大小小于点云总数的_mininum_rate时，不再继续分割
-    int _k_neighbers;//k近邻参数
+    float _mininum_rate;
+    int _k_neighbers;
 
     // socket args
     std::string _ip_addr;

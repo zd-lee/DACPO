@@ -1,20 +1,20 @@
 #pragma once
 #include <vector>
 #include <algorithm>
+#include <chrono>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <mutex>
 #include <PoissionEntrance.h>
 #include "dbscan.h"
 #include "nlohmann/json.hpp"
-// #include "indicators/indicators.hpp"
-// #include <thread>
-// #include <chrono>
 
-// 定义一对多的映射，表示两个集合之间的一个一对多的映射，要求两个集合的元素都是自然数。
 #define MULTI_MAP std::vector<std::vector<int>>
 
 namespace lzd_tools{
+
+    std::vector<std::vector<int>> flag2color(const std::vector<int>& flag);
     
     struct thread_safe_bool {
         bool val;
@@ -66,14 +66,10 @@ namespace lzd_tools{
 
     /**
      * @brief 
-     * 计时器类,用于计算函数运行时间.
-     * 使用方式:
      *     nlohmann::json j;
      *     Timer timer(j,"func_name");
      * 
-     *     // timer.Start(); // 可以手动开始计时,也可以不开始,构造函数会自动开始计时
      *     // do something
-     *     // timer.Done(); // 可以手动结束计时,也可以不结束,析构函数会自动结束计时  
      */
     class Timer {
     private:
@@ -128,17 +124,11 @@ namespace lzd_tools{
 
     };
    
-    /**************************************颜色映射******************************************/
 
-    // 有限映射 将有限值域映射到RGB空间上
     typedef std::map<int, std::vector<int>> FiniteMap;
   
     /**
      * @brief 
-     * 无限映射的虚基类 将一个flag数组中的元素的定义域中的所有值映射到RGB空间上
-     * 所有子类需要实现toRGB函数,对于任意的_xval,返回一个RGB颜色
-     * 如果flag数组为空,则不标记颜色
-     * 使用方式:
      * lzd_tools::InFiniteMap<int>* color_map =new lzd_tools::RandomColorMapper<int>(seg_id);
      * lzd_tools::op2ply(op, path, XForm<REAL, DIM + 1>().Identity(), color_map);
      * ...
@@ -183,7 +173,6 @@ namespace lzd_tools{
 
     /**
      * @brief 
-     * 得到渐变色 将从大到小的值映射为红色-绿色 
      */
     template<typename REAL>
     class GradientMapper :public InFiniteMap<REAL> {
@@ -202,7 +191,7 @@ namespace lzd_tools{
             gap = _max_val - _min_val; // 
         }
         std::vector<int> toRGB(REAL _xval) {
-            int t = 254 * (_xval - _min_val) / gap;//防止max变成min..
+            int t = 254 * (_xval - _min_val) / gap;
             t %= 255;
             return { t,255 - t,t / 2 };   
         }
@@ -210,7 +199,6 @@ namespace lzd_tools{
 
     /**
      * @brief 
-     * 提供四种好看的颜色;如果flag中不同的值超过四个,之后出现的值将会被映射到第五种颜色(黑色)上
      * @tparam REAL 
      */
     template<typename REAL>
@@ -233,14 +221,13 @@ namespace lzd_tools{
         
         beautifulColorMapper(std::vector<REAL> flag):InFiniteMap<REAL>(flag) {
             _color = {
-                {217,151,75},//沙漠黄
-                {149,168,184},//灰蓝
-                {80,144,109},//海藻绿
-                {250,236,229},//亮粉
-                {40,30,16}//黑
+                {217,151,75},
+                {149,168,184},
+                {80,144,109},
+                {250,236,229},
+                {40,30,16}
             };
 
-            //初始化map
             for (int i = 0; i < flag.size(); i++) {
                 if (_map.size() >= 4) {
                     break;
@@ -266,14 +253,13 @@ namespace lzd_tools{
         }
     };
     
-    template <typename REAL, int DIM, typename ColorType>
+    template <typename REAL, unsigned int DIM, typename ColorType>
     int op2ply(const ORIENTED_POINTS& op, const std::string path, const XForm<REAL, DIM + 1> xform, lzd_tools::InFiniteMap<ColorType>* color_map)
     {
         std::ofstream out(path);
         out << "ply" << std::endl;
         out << "format ascii 1.0" << std::endl;
         out << "element vertex " << op.size() << std::endl;
-        // 如果有flag字段,则将不同的点标记为不同的颜色
         out << "property float x" << std::endl;
         out << "property float y" << std::endl;
         out << "property float z" << std::endl;
@@ -307,17 +293,14 @@ namespace lzd_tools{
 
     /**
      * @brief
-     * 绘制有向点云(InFiniteMap版本)
-     * @param flagandColorMap 标记,以及标记的颜色列表.
      */
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     int op2ply(const ORIENTED_POINTS& op, const std::string path,const XForm<REAL, DIM + 1> xform,lzd_tools::InFiniteMap<int>* color_map)
     {
         std::ofstream out(path);
         out << "ply" << std::endl;
         out << "format ascii 1.0" << std::endl;
         out << "element vertex " << op.size() << std::endl;
-        // 如果有flag字段,则将不同的点标记为不同的颜色
         out << "property float x" << std::endl;
         out << "property float y" << std::endl;
         out << "property float z" << std::endl;
@@ -351,10 +334,8 @@ namespace lzd_tools{
 
     /**
      * @brief 
-     * 绘制有向点云(FiniteMap版本)
-     * @param flagandColorMap 标记,以及标记的颜色列表.
      */
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     int op2ply(const ORIENTED_POINTS& op, const std::string path, 
         const XForm<REAL, DIM+1> xform = XForm<REAL, DIM+1>().Identity(), 
         std::pair<std::vector<int>, FiniteMap> flagandColorMap= std::make_pair(std::vector<int>(), lzd_tools::FiniteMap()))
@@ -365,7 +346,6 @@ namespace lzd_tools{
         out << "ply" << std::endl;
         out << "format ascii 1.0" << std::endl;
         out << "element vertex " << op.size() << std::endl;
-        // 如果有flag字段,则将不同的点标记为不同的颜色
         out << "property float x" << std::endl;
         out << "property float y" << std::endl;
         out << "property float z" << std::endl;
@@ -408,9 +388,8 @@ namespace lzd_tools{
 
     /**
      * @brief 
-     * 绘制有色surface(可以指定每个面的颜色)
      */
-     template <typename REAL, int DIM>
+     template <typename REAL, unsigned int DIM>
      int mesh2ply(const MESH& mesh, const std::string path, const XForm<REAL, DIM+1> xform = XForm<REAL, DIM+1>().Identity(), 
         std::pair<std::vector<int>, FiniteMap> flagandColorMap= std::make_pair(std::vector<int>(), lzd_tools::FiniteMap())){
         const int n = mesh.first.size();
@@ -451,7 +430,7 @@ namespace lzd_tools{
         return 0;
     }
     
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     int mesh2ply(const MESH& mesh, const std::string path, const XForm<REAL, DIM+1> xform = XForm<REAL, DIM+1>().Identity(), lzd_tools::InFiniteMap<int>* color_map = new lzd_tools::RandomColorMapper<int>(std::vector<int>())){
         const int n = mesh.first.size();
         const int m = mesh.second.size();
@@ -459,7 +438,6 @@ namespace lzd_tools{
         out << "ply" << std::endl;
         out << "format ascii 1.0" << std::endl;
         out << "element vertex " << n << std::endl;
-        // 如果有flag字段,则将不同的点标记为不同的颜色
         out << "property float x" << std::endl;
         out << "property float y" << std::endl;
         out << "property float z" << std::endl;
@@ -490,7 +468,7 @@ namespace lzd_tools{
         return 0;
     }
 
-    template <typename REAL, int DIM, typename ColorType>
+    template <typename REAL, unsigned int DIM, typename ColorType>
     int mesh2ply(const MESH& mesh, const std::string path, const XForm<REAL, DIM+1> xform = XForm<REAL, DIM+1>().Identity(), lzd_tools::InFiniteMap<ColorType>* color_map = new lzd_tools::RandomColorMapper<int>(std::vector<ColorType>())){
         const int n = mesh.first.size();
         const int m = mesh.second.size();
@@ -498,7 +476,6 @@ namespace lzd_tools{
         out << "ply" << std::endl;
         out << "format ascii 1.0" << std::endl;
         out << "element vertex " << n << std::endl;
-        // 如果有flag字段,则将不同的点标记为不同的颜色
         out << "property float x" << std::endl;
         out << "property float y" << std::endl;
         out << "property float z" << std::endl;
@@ -528,42 +505,21 @@ namespace lzd_tools{
         out.close();
         return 0;
     } 
-    
-    ///**
-    // * @brief 
-    // * 将kidxs对应的点,根据其与P所在切平面的距离排序
-    // * @param data 
-    // * @param p 查询点
-    // * @param kidxs 待排序的点在data中的索引 
-    // */
-    //template <typename REAL, int DIM>
-    //std::vector<int> tangentDistance(const ORIENTED_POINTS& data, const std::pair< Point<REAL,DIM>,Normal<REAL,DIM> >op,const std::vector<int>& kidxs){
-    //}
-
     /**
-     * @brief 将min-max映射到0-255 要求min-max不能大于255
      * @param min 
      * @param max 
      * @return FiniteMap 
      */
     FiniteMap get_regular_colormap(int min = 0, int max = 255);
 
-    //lzd_tools::FiniteMap lzd_tools::get_regular_colormap(std::vector<int> op_type);
 
     /**
      * @brief 
-     * 向mesh指定位置添加一个球体
-     * @param center 球体的中心
-     * @param radius 球体的半径
-     * @param n 球体的纬度精细度
-     * @param m 球体的经度精细度
-     * @return MESH 返回添加球体后的mesh 
      */
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     MESH add_sphere(const MESH& mesh, Point<REAL, DIM> center, REAL radius = 0.01, int n = 10, int m = 10){
         int start = mesh.first.size();
-        MESH res = mesh;//看看是深拷贝还是浅拷贝
-        // 添加顶点
+        MESH res = mesh;
         for(int i=0;i<n;i++){
             for(int j=0;j<m;j++){
                 REAL theta = 2 * M_PI * i / n;
@@ -572,7 +528,6 @@ namespace lzd_tools{
                 res.first.push_back(p);
             }
         }
-        // 添加面
         for(int i=0;i<n;i++){
             for(int j=0;j<m;j++){
                 int a = i * m + j + start;
@@ -587,7 +542,7 @@ namespace lzd_tools{
     }
 
 
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     void normalize(Point<REAL, DIM>& p){
         REAL sum = 0;
         for(int i=0;i<DIM;i++){
@@ -599,10 +554,9 @@ namespace lzd_tools{
         }
     }
 
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     MESH get_sphere(Point<REAL, DIM> center, REAL radius = 0.01, int n = 10, int m = 10){
         MESH res;
-        // 添加顶点
         for(int i=0;i<n;i++){
             for(int j=0;j<m;j++){
                 REAL theta = 2 * M_PI * i / n;
@@ -611,7 +565,6 @@ namespace lzd_tools{
                 res.first.push_back(p);
             }
         }
-        // 添加面
         for(int i=0;i<n;i++){
             for(int j=0;j<m;j++){
                 int a = i * m + j;
@@ -627,15 +580,10 @@ namespace lzd_tools{
 
     /**
      * @brief Get the arrow object
-     * 得到一个箭头的Mesh。箭头的起点为start + (end-start)*0.01,终点为end 
-     *  箭头为一个圆锥和一个圆柱的组合。圆柱的底面半径为圆柱的1/4
-        圆锥的顶点为enod
-    * @param radius 圆锥的底面半径
-    * @param n 圆锥/圆柱的纬度精细度
      */
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     MESH get_arrow(Point<REAL,DIM> start, Point<REAL,DIM> end, REAL radius = 0.01, int n = 10){
-        REAL rate = 2;//圆柱半径与圆锥底面半径的比值
+        REAL rate = 2;
         Point<REAL, DIM> dir = end - start;
         Point<REAL, DIM> z = dir;
         lzd_tools::normalize(z);
@@ -656,53 +604,45 @@ namespace lzd_tools{
         Point<REAL,DIM> cylinder_end = start + dir * 0.9;
         
         MESH res;
-        // 圆柱底面顶点
         for(int i=0;i<n;i++){
             REAL theta = 2 * M_PI * i / n;
             Point<REAL, DIM> p = start + radius / rate * (cos(theta) * x + sin(theta) * y);
             res.first.push_back(p);
         }
 
-        // 圆柱顶面顶点
         for(int i=0;i<n;i++){
             REAL theta = 2 * M_PI * i / n;
             Point<REAL, DIM> p = cylinder_end + radius / rate * (cos(theta) * x + sin(theta) * y);
             res.first.push_back(p);
         }
-        // 圆柱侧面
         for(int i=0;i<n;i++){
             res.second.push_back({n+i,i,(i+1)%n,});
             res.second.push_back({n+i,(i+1)%n,(i+1)%n+n});
         } 
         int cend = res.first.size();
 
-        // 圆锥底面
         for(int i=0;i<n;i++){
             REAL theta = 2 * M_PI * i / n;
             Point<REAL, DIM> p = cylinder_end + radius * (cos(theta) * x + sin(theta) * y);
             res.first.push_back(p);
         }
 
-        // 圆锥顶点
         res.first.push_back(end);
         int top = res.first.size() - 1;
         
-        // 圆锥侧面
         for(int i=0;i<n;i++){
             res.second.push_back({top,i + cend,(i+1)%n+cend});
         }       
         return res;  
     }
 
-    //在op上找到距离op中心最近的点
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     Point<REAL, DIM> get_center_on_op(const ORIENTED_POINTS& op){
         Point<REAL, DIM> c,res;
         for(auto& i:op){
             c += i.first;
         }
         c /= op.size();
-        // 在op中找到离res最近的点
         REAL min_dis = 1e10;
         for(auto& i:op){
             REAL dist = Distance(i.first, c);
@@ -716,9 +656,8 @@ namespace lzd_tools{
 
     /**
      * @brief 
-     * 翻转mesh 翻转mesh即将mesh中的所有面的顶点顺序翻转
      */
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     int revert_mesh(MESH& mesh){
         for(auto& i:mesh.second){
             std::swap(i[0],i[1]);
@@ -726,7 +665,7 @@ namespace lzd_tools{
         return 0;
     }    
 
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     int revert_op(ORIENTED_POINTS& op){
         for(auto& i:op){
             i.second.normal = -i.second.normal;
@@ -735,7 +674,7 @@ namespace lzd_tools{
     }
 
 
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     int add_topology(MESH& mesh, const MESH& topology){
         int start = mesh.first.size();
         for(auto& i:topology.first){
@@ -753,17 +692,15 @@ namespace lzd_tools{
 
     /**
      * @brief 
-     * 删除op中,op.first完全一致的点;其余点的顺序不变
      * @return int 
      */
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     int duplicate_filter(const ORIENTED_POINTS& op, ORIENTED_POINTS& res){
         assert(&op != &res);
         std::vector<std::pair<int,Point<REAL, DIM>>> temp;
         for(int i=0;i<op.size();i++){
             temp.push_back({i,op[i].first});
         }
-        // 定义比较函数
         auto cmp = [](const std::pair<int,Point<REAL, DIM>>& a, const std::pair<int,Point<REAL, DIM>>& b){
             for(int i=0;i<DIM;i++){
                 if(a.second[i] != b.second[i]){
@@ -782,10 +719,8 @@ namespace lzd_tools{
         };        
 
 
-        // 根据点的坐标排序
         std::sort(temp.begin(),temp.end(),cmp);
-        // 删除重复点
-        std::vector<int> flag(op.size(),1);//1表示保留,0表示删除
+        std::vector<int> flag(op.size(),1);
         int dup_count = 0;
         for(int i=0;i<temp.size();i++){
             if(i+1<temp.size() && eq(temp[i],temp[i+1])){
@@ -793,7 +728,6 @@ namespace lzd_tools{
                 dup_count++;
             }
         }
-        // 生成res
         res.clear();
         for(int i=0;i<op.size();i++){
             if(flag[i]){
@@ -803,7 +737,7 @@ namespace lzd_tools{
         return dup_count;
     }    
 
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     struct PointNormalMetric {
         int total_count;
         int angle15_count;
@@ -812,10 +746,8 @@ namespace lzd_tools{
         int angle60_count;
         int angle90_count;
         REAL avg_loss;
-        REAL avg_nd_loss;// 保留一下吧与avg_loss区分
+        REAL avg_nd_loss;
         
-        // 计算与gt相差大于angle度的点的个数
-        // permit_nd: 是否允许一次翻转
         int count_angle_num(const ORIENTED_POINTS& _gt_points_normals, const ORIENTED_POINTS& _points_normals,REAL angle, bool permit_nd = true){
             assert(angle<=90);
             int count = 0, inv_count = 0;
@@ -841,6 +773,7 @@ namespace lzd_tools{
             assert(op.size() == gt.size());
             total_count = op.size();
             avg_loss = 0;
+            avg_nd_loss = 0;
             for (int i = 0; i < op.size(); i++) {
                 for (int d = 0; d < DIM; d++) {
                     dist += op[i].first[d] - gt[i].first[d];
@@ -850,7 +783,7 @@ namespace lzd_tools{
                 avg_loss += angle;
                 avg_nd_loss += iangle;
             }
-            avg_nd_loss = min(avg_loss, avg_nd_loss) / total_count; 
+            avg_nd_loss = std::min(avg_loss, avg_nd_loss) / total_count;
             avg_loss /= total_count;
             angle15_count = count_angle_num(gt, op, 15, permit_nd);
             angle30_count = count_angle_num(gt, op, 30, permit_nd);
@@ -881,7 +814,6 @@ namespace lzd_tools{
     
     /**
      * @brief 
-     * 压缩数组,将数组中的元素压缩为连续的整数
      */
     std::vector<int> squeeze_array(const std::vector<int>& _array, int start = 0);
     
@@ -889,13 +821,9 @@ namespace lzd_tools{
 
  
 
-    // 重新排序op[left,right]，使得op[left:left+k][d] < op[left+k][d] <= op[left+k+1:right][d]
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     void quickselect( std::vector<std::pair<Point<REAL, DIM>, int>>& op, int left, int right, int k, int d) {
         if (left < right) {
-            // // 在第 d 维度进行划分
-            // int pivot_index = partition(op, left, right, d);
-            // int rank = pivot_index - left + 1;a
             REAL pivot = op[right].first[d];
             int i = left;
             for (int j = left; j < right; ++j) {
@@ -919,14 +847,12 @@ namespace lzd_tools{
         }
     }
 
-    // 将op中，left到right中的元素，从第d维度开始，递归第二分，直到将op中的元素划分为k个部分
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     void _k_select( std::vector<std::pair<Point<REAL, DIM>, int>>& op, int k, int left, int right, int d) {
         if (k == 1) {
             return;
         }
         
-        // 递归划分
         int mid = (right - left) / 2;
         quickselect(op, left, right, mid, d);
         int kleft = k / 2, kright = k - kleft;
@@ -935,8 +861,7 @@ namespace lzd_tools{
         _k_select(op, kright, left + mid + 1, right, d);        
     }
 
-    // 将op中的元素划分为k个部分
-    template <typename REAL, int DIM>
+    template <typename REAL, unsigned int DIM>
     std::vector<int> k_select(const ORIENTED_POINTS& op, int k) {
         std::vector<std::pair<Point<REAL, DIM>, int>> op_with_index;
         for (int i = 0; i < op.size(); ++i) {
@@ -966,14 +891,11 @@ namespace global_var {
 	// };
     extern std::map<int,std::string> linked_graph_filp_alg_name;
 
-    extern nlohmann::json config_j;// 控制参数
-    extern nlohmann::json metric_j;// 结果
+    extern nlohmann::json config_j;
+    extern nlohmann::json metric_j;
     extern nlohmann::json res_log_j;
 
     //extern indicators::ProgressBar bar;
-    //class Logger {
-    //    static nlohmann::json config_j;// 控制参数
-    //    static nlohmann::json metric_j;// 效果、日志等
     //};
 
     extern std::vector<std::vector<unsigned int>> color_map_100;
@@ -982,10 +904,8 @@ namespace global_var {
 }
 
 
-// 求一个一对多的映射的逆映射,给定M0:X->Y,得到映射Mi:Y->X; 需要提供Y的最大值,否则默认Y_max = max({Y|Y->X∈M0}),这可以会导致错误
-template <typename REAL, int DIM>
+template <typename REAL, unsigned int DIM>
 MULTI_MAP inverse_map(MULTI_MAP& map, int MAX_Y = -1){
-    // 求B集合中的最大值
     int max = 0;
     if (MAX_Y <= 0) {
         for (auto i : map) {
@@ -999,7 +919,6 @@ MULTI_MAP inverse_map(MULTI_MAP& map, int MAX_Y = -1){
         max = MAX_Y;
     }
     max += 1;
-    // 用于存储逆映射
     MULTI_MAP inverse(max+1);
     for(int i=0;i<map.size();i++){
         for(auto j:map[i]){
@@ -1009,16 +928,11 @@ MULTI_MAP inverse_map(MULTI_MAP& map, int MAX_Y = -1){
     return inverse;
 }
 
-// 由mesh生成面法向量 overlap_plane 1 10 10 824
-template <typename REAL, int DIM>
+template <typename REAL, unsigned int DIM>
 int gen_face_norm(MESH& mesh, std::vector<Point<REAL,DIM>>& face_norm){
     face_norm.resize(mesh.second.size());
 #pragma omp parallel for
     for(int i=0;i<mesh.second.size();i++){
-        //if(mesh.second[i].size() != 3){
-        //    std::cout << "Error: mesh.second[i].size() != 3" << std::endl;
-        //    continue;
-        //}
         Point<REAL, DIM> p1 = mesh.first[mesh.second[i][0]];
         Point<REAL, DIM> p2 = mesh.first[mesh.second[i][1]];
         Point<REAL, DIM> p3 = mesh.first[mesh.second[i][2]];
@@ -1026,21 +940,14 @@ int gen_face_norm(MESH& mesh, std::vector<Point<REAL,DIM>>& face_norm){
         Point<REAL, DIM> v2 = p3 - p1;
         face_norm[i] = Point<REAL, DIM>::CrossProduct(v1, v2); 
     }
-    //if(i<mesh.second.size())
-    //    return -1;
     return 0;
 }
 
 
  /* @brief 
- * @param mesh 待写入的mesh 
- * @param face_norm 面法向量 
- * @param path 输出路径
- * @param flag 用于标记点的颜色,如果flag.size() == 0,则不标记颜色,否则flag.size() == mesh.first.size()
- * @param xform 变换矩阵
  * @return int 
  */
-template <typename REAL, int DIM>
+template <typename REAL, unsigned int DIM>
 int mesh2ply(MESH& mesh, std::vector<Point<REAL,DIM>>& face_norm, const std::string path, const std::vector<int>& flag = std::vector<int>(),const XForm<REAL, DIM+1> xform = XForm<REAL, DIM + 1>().Identity()){
     const int n = mesh.first.size();
     const int m = mesh.second.size();
@@ -1048,7 +955,6 @@ int mesh2ply(MESH& mesh, std::vector<Point<REAL,DIM>>& face_norm, const std::str
     out << "ply" << std::endl;
     out << "format ascii 1.0" << std::endl;
     out << "element vertex " << n << std::endl;
-    // 如果有flag字段,则将不同的点标记为不同的颜色
     out << "property float x" << std::endl;
     out << "property float y" << std::endl;
     out << "property float z" << std::endl;
@@ -1095,18 +1001,14 @@ int mesh2ply(MESH& mesh, std::vector<Point<REAL,DIM>>& face_norm, const std::str
 std::vector<std::vector<int>> flag2color(const std::vector<int>& flag);
 /**
  * @brief 
- * 绘制无向点云
- * @param xyz 点云
- * @param flag 用于标记点的颜色,如果flag.size() != xyz.size() 则不标记颜色.本函数会自动根据flag中不同值的个数随机生成颜色
  */
-template <typename REAL, int DIM>
+template <typename REAL, unsigned int DIM>
 int xyz2ply(std::vector<Point<REAL,DIM>>& xyz,const std::string path, const std::vector<int>& flag = std::vector<int>(), const XForm<REAL, DIM+1> xform = XForm<REAL, DIM+1>().Identity()){
     std::ofstream out(path);
     auto colors = flag2color(flag);
     out << "ply" << std::endl;
     out << "format ascii 1.0" << std::endl;
     out << "element vertex " << xyz.size() << std::endl;
-    // 如果有flag字段,则将不同的点标记为不同的颜色
     out << "property float x" << std::endl;
     out << "property float y" << std::endl;
     out << "property float z" << std::endl;
@@ -1128,7 +1030,6 @@ int xyz2ply(std::vector<Point<REAL,DIM>>& xyz,const std::string path, const std:
             int b = colors[i][2];
             out << r << " " << g << " " << b << std::endl;
 
-            // if(flag[i] == 0){
             //     out << "0 0 255" << std::endl;
             // }else if(flag[i] == 1){
             //     out << "255 0 0" << std::endl;
@@ -1136,7 +1037,6 @@ int xyz2ply(std::vector<Point<REAL,DIM>>& xyz,const std::string path, const std:
             //     out << "0 255 0" << std::endl;
             // }else{
             //     out << "255 255 255" << std::endl;
-            // }
         }else{
             out << std::endl;
         }
@@ -1151,8 +1051,7 @@ int change_args(std::vector<std::string>& args, std::string key, std::string val
 
 int find_arg(std::vector<std::string>& args, std::string key);
 
-// 计算两个点之间的距离
-template <typename REAL, int DIM>
+template <typename REAL, unsigned int DIM>
 REAL distance(Point<REAL, DIM> p1, Point<REAL, DIM> p2) {
     REAL sum = 0;
     for (int i = 0; i < DIM; i++) {
@@ -1161,22 +1060,15 @@ REAL distance(Point<REAL, DIM> p1, Point<REAL, DIM> p2) {
     return sqrt(sum);
 }
 
-// DBSCAN算法
-// 输入:点集,半径,最小点数
-// 输出:聚类结果
-// 已经弃用 请使用o3d_api中的DBSCAN
-template <typename REAL, int DIM>
+template <typename REAL, unsigned int DIM>
 int DBSCAN(ORIENTED_POINTS& p, std::vector<ORIENTED_POINTS>& res,ORIENTED_POINTS& rest,REAL ep = 0.1, int min_points = 10){
-    // 将点集转换为dbscan需要的格式
     std::vector<DBSCAN_joo::Point> joo_points;
     for(auto i:p){
         DBSCAN_joo::Point joo_point = { i.first[0],i.first[1],i.first[2],UNCLASSIFIED };
         joo_points.push_back(joo_point);
     } 
-    // 调用dbscan
     DBSCAN_joo::DBSCAN ds(min_points,ep,joo_points);
     ds.run();
-    // 将结果转换为需要的格式。对于每一个类别，将其转换为一个点集，然后将这些点集放入res中
     int max = 0;
     for(auto i:joo_points){
         if(i.clusterID > max){
@@ -1188,16 +1080,13 @@ int DBSCAN(ORIENTED_POINTS& p, std::vector<ORIENTED_POINTS>& res,ORIENTED_POINTS
     
     Normal<REAL, DIM> zero_norm;
     for(auto i:joo_points){
-        // 将点转换为需要的格式
         Point<REAL, DIM> p(i.x,i.y,i.z);
         Normal<REAL, DIM> n = zero_norm;
         do
         {
-            //随机生成一个法向量
             n = Point<REAL, DIM>(rand() % 1001 - 500.0, rand() % 1001 - 500.0, rand() % 1001 - 500.0);   
         } while (n == zero_norm);
         auto pn = std::make_pair(p,n);
-        // 将点放入对应的类别中
         if(i.clusterID != UNCLASSIFIED){
             res[i.clusterID].push_back(pn);
         }else{
@@ -1208,12 +1097,11 @@ int DBSCAN(ORIENTED_POINTS& p, std::vector<ORIENTED_POINTS>& res,ORIENTED_POINTS
 }
 
 /// <summary>
-/// 获取flag值到颜色的映射表。 注意颜色表的长度等于flag中不同值的个数。与flag2color的返回不同
 /// </summary>
 std::vector<std::vector<int>> MapLable2Color(std::vector<int> flag);
 
 
-template <typename REAL, int DIM>
+template <typename REAL, unsigned int DIM>
 Normal<REAL,DIM> get_rand_norm(int seed){
     Normal<REAL, DIM> zero_normal(Point<REAL, DIM>(0, 0, 0));
     do{
@@ -1226,21 +1114,18 @@ Normal<REAL,DIM> get_rand_norm(int seed){
             continue;
         }
         else {
-            normalize<REAL, DIM>(n);
+            lzd_tools::normalize<REAL, DIM>(n);
             return n;
         }
     } while (true);
 }
 
-// 递归创建文件夹
-// 给定形如"dir1/dir2/dir3"的路径,则创建dir1,dir2,dir3
 int rmkdir(const std::string path);
 
 int rmkdir(const std::string base_path,const std::vector<std::string> subpaths);
 
 template <typename REAL>
 int linear_regression(const std::vector<REAL> x,const std::vector<REAL> y, REAL& a, REAL& b){
-    // 求x,y的均值
     REAL x_mean = 0;
     REAL y_mean = 0;
     for(auto i:x){
@@ -1251,7 +1136,6 @@ int linear_regression(const std::vector<REAL> x,const std::vector<REAL> y, REAL&
         y_mean += i;
     }
     y_mean /= y.size();
-    // 求a,b
     REAL sum1 = 0;
     REAL sum2 = 0;
     for(int i=0;i<x.size();i++){
@@ -1263,10 +1147,8 @@ int linear_regression(const std::vector<REAL> x,const std::vector<REAL> y, REAL&
     return 0;
 }
 
-// 根据data 辅助判断是否需要改变策略
 template<typename REAL>
 bool consider_change(std::vector<REAL> data,REAL& a,int consider_count = 5, REAL treshold = 0.0) {
-    // 线性拟合
     a = 0;
     if (data.size() < consider_count) {
         return false;
@@ -1283,8 +1165,6 @@ bool consider_change(std::vector<REAL> data,REAL& a,int consider_count = 5, REAL
 
 /**
  * @brief 
- * 由pair<int,int>生成一个唯一的key; 注意，a,b和b,a生成的key是一样的
- * 线程安全
  * @tparam T 
  */
 template<typename T>
@@ -1330,5 +1210,3 @@ public:
         return res;
     }
 };
-
-

@@ -4,19 +4,22 @@ This paper is published at ACM Transactions on Graphics (SIGGRAPH 2025). Please 
 
 ![1750858552307](image/README/1750858552307.png)
 
-### Tested Platform
+### Tested Platforms
 
 - Windows 11
 - Visual Studio 2022
 - 11th Gen Intel(R)Core(TM)i9-11900K 3.50GHz
 - 64GB RAM
+- Linux with CMake, GCC, PCL, Eigen3, Boost, and OpenMP
 
 ### Dependencies
 #### For DACPO main project
 - PCL
-- Open3d
 - Eigen
 - Boost
+- OpenMP
+
+The PSR implementation used by DACPO is based on [PoissonRecon](https://github.com/mkazhdan/PoissonRecon).
 
 **1. PCL**
 
@@ -33,21 +36,7 @@ After executing `vcpkg integrate project`, you will see a prompt:
 
 Follow the instructions as prompted.
 
-**2. Open3D**
-
-Download the Open3D package from [Github releases](https://github.com/isl-org/Open3D/releases), and configure the header files and library files in the solution manager. Link open3d.lib in the linker.
-
-The header files include:
-
-```
-include/
-include/3dparty 
-```
-Place the dynamic libraries in the executable file directory.
-
-
-
-**3. Eigen**
+**2. Eigen**
 
 Install using vcpkg:
 
@@ -57,13 +46,26 @@ Install using vcpkg:
 
 
 
-**4. Boost**
+**3. Boost**
 
 Install using vcpkg:
 
 `vcpkg install boost:x64-windows`
 
 `vcpkg integrate project`
+
+**4. OpenMP**
+
+OpenMP is required by the CMake build. On Windows, install it through Visual Studio. On Linux, install the OpenMP runtime for your compiler, for example `libomp-dev` for Clang or the GCC OpenMP package provided by your distribution.
+
+#### For graphical_model Python tools
+
+The 0-1 integer optimization service and visualization helpers use Python dependencies listed in `graphical_model/requirements.txt`:
+
+```bash
+cd graphical_model
+pip install -r requirements.txt
+```
 
 
 **Build with CMake**
@@ -72,17 +74,16 @@ After installing the dependencies, you can build the solution by using the follo
 
 1. **Create build directory:**
 ```bash
-mkdir build
+# Using vcpkg toolchain on Windows
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=[path_to_vcpkg]/scripts/buildsystems/vcpkg.cmake
 
-cd build
+# Or use system/default packages
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
-# Using vcpkg toolchain (recommended)
-cmake .. -DCMAKE_TOOLCHAIN_FILE=[path_to_vcpkg]/scripts/buildsystems/vcpkg.cmake
-
-# Or use system default
-cmake ..
+cmake --build build --config Release -j 4
 ```
 
+DACPO requires C++17. The executable is written to `build/bin/Release/DACPO` on multi-config generators or `build/bin/DACPO` on single-config generators.
 
 
 **Configure Header and Library Paths**
@@ -118,6 +119,18 @@ Server listening on 0.0.0.0:11111
 ```
 {Path to DACPO.exe} --in {scene name} --iters 0 --depth 10 --neighbors 10 --seed 10 --input_data_root {Path to your scene folder} --ipsr_type 2 --config_folder {Path to conf}
 ```
+Example:
+```bash
+OMP_NUM_THREADS=4 ./build/bin/Release/DACPO \
+  --in scene0600_00_vh_clean_2 \
+  --iters 10 --depth -1 --neighbors 10 --seed 10 \
+  --input_data_root data/scannetv2_maxpart/val/ \
+  --out_data_root data/out/current_val_it10_dp-1 \
+  --ipsr_type 2 \
+  --config_folder conf/default \
+  --psr_threads 10
+```
+
 Usage:
 --in: scene name
 
@@ -131,16 +144,22 @@ Usage:
 
 --input_data_root: path to scene folder
 
+--out_data_root: path to output folder
+
 --ipsr_type: 0: ipsr the whole scene, 2: ipsr each block
 
 --config_folder: path to conf folder, please use /conf/default
+
+--psr_threads: number of threads used by each PoissonRecon call
+
+We recommend setting `--psr_threads` explicitly, especially on Linux. In our tests, allowing too many concurrent PSR threads made the PSR stage slower rather than faster. We have not deeply profiled the PSR implementation, but on our test machine `--psr_threads 10` was a conservative starting point. When running many scenes in parallel, reduce this value together with `OMP_NUM_THREADS` to avoid oversubscription.
 
 
 
 
 ### Dataset
 Our code can process a single scene in a single ply file.
-Batch preprocess dataset and batch running code will be released later.
+Batch preprocess dataset and batch running code will be released later. For now, batch runs can be launched by wrapping the single-scene CLI in a shell or Python script.
 
 #### ScanNet
 Please refer to [ScanNet](https://github.com/ScanNet/ScanNet)
@@ -171,4 +190,3 @@ If you find this work useful in your research, please consider citing:
       url={https://arxiv.org/abs/2505.23469}, 
 }
 ```
-

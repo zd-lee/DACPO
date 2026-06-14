@@ -1,14 +1,34 @@
 #include "socket_api.h"
 
+#include <cerrno>
+
+namespace {
+int socket_last_error() {
+#if defined(_WIN32)
+    return WSAGetLastError();
+#else
+    return errno;
+#endif
+}
+
+void close_socket(SOCKET sock) {
+#if defined(_WIN32)
+    closesocket(sock);
+#else
+    close(sock);
+#endif
+}
+}
+
 lzd_tools::Socket::Socket(const std::string& ip, int port) : sock(INVALID_SOCKET) {
     if (!initializeWinsock()) {
-        std::cerr << "Failed to initialize Winsock." << std::endl;
+        std::cerr << "Failed to initialize socket API." << std::endl;
         exit(EXIT_FAILURE);
     }
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == INVALID_SOCKET) {
-        std::cerr << "Socket creation error: " << WSAGetLastError() << std::endl;
+        std::cerr << "Socket creation error: " << socket_last_error() << std::endl;
         cleanupWinsock();
         exit(EXIT_FAILURE);
     }
@@ -23,22 +43,30 @@ lzd_tools::Socket::Socket(const std::string& ip, int port) : sock(INVALID_SOCKET
 }
 
 lzd_tools::Socket::~Socket() {
-    closesocket(sock);
+    if (sock != INVALID_SOCKET) {
+        close_socket(sock);
+    }
     cleanupWinsock();
 }
 
 bool lzd_tools::Socket::initializeWinsock() {
+#if defined(_WIN32)
     WSADATA wsaData;
     return WSAStartup(MAKEWORD(2, 2), &wsaData) == 0;
+#else
+    return true;
+#endif
 }
 
 void lzd_tools::Socket::cleanupWinsock() {
+#if defined(_WIN32)
     WSACleanup();
+#endif
 }
 
 bool lzd_tools::Socket::connectToServer() {
     if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        std::cerr << "Connection Failed: " << WSAGetLastError() << std::endl;
+        std::cerr << "Connection Failed: " << socket_last_error() << std::endl;
         return false;
     }
     return true;
@@ -49,11 +77,10 @@ bool lzd_tools::Socket::SendDoubleArray(const std::vector<double>& data) {
     while(byteSent < data.size() * sizeof(double)) {
 		int bytesSent = send(sock, reinterpret_cast<const char*>(data.data()) + byteSent, data.size() * sizeof(double) - byteSent, 0);
 		if (bytesSent == SOCKET_ERROR) {
-			std::cerr << "Send failed: " << WSAGetLastError() << std::endl;
+			std::cerr << "Send failed: " << socket_last_error() << std::endl;
 			return false;
         }
         else {
-			// std::cout << "Sent " << bytesSent << " bytes" << std::endl;
         }
 		byteSent += bytesSent;
 	}
@@ -64,7 +91,7 @@ bool lzd_tools::Socket::ReceiveDoubleArray(std::vector<double>& data, size_t exp
     data.resize(expectedSize);
     int bytesRead = recv(sock, reinterpret_cast<char*>(data.data()), expectedSize * sizeof(double), 0);
     if (bytesRead == SOCKET_ERROR) {
-        std::cerr << "Receive failed: " << WSAGetLastError() << std::endl;
+        std::cerr << "Receive failed: " << socket_last_error() << std::endl;
         return false;
     }
     return true;
@@ -75,7 +102,7 @@ bool lzd_tools::Socket::ReceiveIntArray(std::vector<int> &data, size_t expectedS
     data.resize(expectedSize);
     int bytesRead = recv(sock, reinterpret_cast<char*>(data.data()), expectedSize * sizeof(int), 0);
     if (bytesRead == SOCKET_ERROR) {
-        std::cerr << "Receive failed: " << WSAGetLastError() << std::endl;
+        std::cerr << "Receive failed: " << socket_last_error() << std::endl;
         return false;
     }
     return true;
@@ -83,9 +110,9 @@ bool lzd_tools::Socket::ReceiveIntArray(std::vector<int> &data, size_t expectedS
 
 bool lzd_tools::Socket::SendJson(std::string json)
 {
-    int bytesSent = send(sock, json.c_str(), json.size(), 0);
+	int bytesSent = send(sock, json.c_str(), json.size(), 0);
 	if (bytesSent == SOCKET_ERROR) {
-		std::cerr << "Send failed: " << WSAGetLastError() << std::endl;
+		std::cerr << "Send failed: " << socket_last_error() << std::endl;
 		return false;
 	}
 	return true;
@@ -97,7 +124,7 @@ bool lzd_tools::Socket::ReceiveJson(std::string& json)
     char buffer[1024];
 	int bytesRead = recv(sock, buffer, 1024, 0);
 	if (bytesRead == SOCKET_ERROR) {
-		std::cerr << "Receive failed: " << WSAGetLastError() << std::endl;
+		std::cerr << "Receive failed: " << socket_last_error() << std::endl;
 		return false;
 	}
 	json = std::string(buffer, bytesRead);

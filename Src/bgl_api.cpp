@@ -11,9 +11,6 @@ using namespace bgl_api;
 
 //// A graphic of the min-cut is available at
 //// <http://www.boost.org/doc/libs/release/libs/graph/doc/stoer_wagner_imgs/stoer_wagner.cpp.gif>
-//int test_bgl()
-//{
-//    using namespace std;
 //
 //    // define the 16 edges of the graph. {3, 4} means an undirected edge between
 //    // vertices 3 and 4.
@@ -32,38 +29,14 @@ using namespace bgl_api;
 //    // define a property map, `parities`, that will store a boolean value for
 //    // each vertex. Vertices that have the same parity after
 //    // `stoer_wagner_min_cut` runs are on the same side of the min-cut.
-//    BOOST_AUTO(parities,
-//        boost::make_one_bit_color_map(
-//            num_vertices(g), get(boost::vertex_index, g)));
 //
 //    // run the Stoer-Wagner algorithm to obtain the min-cut weight. `parities`
 //    // is also filled in.
-//    int w = boost::stoer_wagner_min_cut(
 //        g, get(boost::edge_weight, g), boost::parity_map(parities));
 //
-//    cout << "The min-cut weight of G is " << w << ".\n" << endl;
-//    assert(w == 7);
 //
-//    cout << "One set of vertices consists of:" << endl;
-//    size_t i;
-//    for (i = 0; i < num_vertices(g); ++i)
-//    {
-//        if (get(parities, i))
-//            cout << i << endl;
-//    }
-//    cout << endl;
 //
-//    cout << "The other set of vertices consists of:" << endl;
-//    for (i = 0; i < num_vertices(g); ++i)
-//    {
-//        if (!get(parities, i))
-//            cout << i << endl;
-//    }
-//    cout << endl;
 //
-//    return EXIT_SUCCESS;
-//}
-
 std::vector<std::pair<int,int>> bgl_api::bgl_stoer_wanger_mincut(const UGRAPH& input_graph)
 {
     std::vector<edge_t> _es;
@@ -87,7 +60,6 @@ std::vector<std::pair<int,int>> bgl_api::bgl_stoer_wanger_mincut(const UGRAPH& i
         g,get(boost::edge_weight,g),boost::parity_map(parities));
 
     std::vector<int> sw_res;
-    // cout << "The min-cut weight of G is " << w << ".\n" << endl;
     for(size_t i = 0;i<num_vertices(g);i++){
         sw_res.push_back(get(parities,i));
     }
@@ -98,7 +70,6 @@ std::vector<std::pair<int,int>> bgl_api::bgl_stoer_wanger_mincut(const UGRAPH& i
             cut_edges.push_back(std::make_pair<int,int>(s,t));
         }
     }
-    //assert(cut_edges.size() == w);
     return cut_edges;
 }
 

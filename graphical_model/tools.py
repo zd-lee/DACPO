@@ -3,15 +3,14 @@ from graph_base import *
 
 
 '''
-计算一个graph的flip acc
-path: graph_topology.json的路径
+Calculate flip accuracy for a graph.
+path: path to graph_topology.json
 return: flip acc
 '''
 def cal_flipacc(path, verbose = False):
     graph = Graph(parse_one_log(path))
     nodes = graph.nodes
     flip = [n.is_inv for n in nodes]
-    # gt 即 flip 亦或 correctness
     gt = [n.is_inv ^ n.correctness for n in nodes]
     flip = np.array(flip)
     gt = np.array(gt)
@@ -22,10 +21,9 @@ def cal_flipacc(path, verbose = False):
 
 
 '''
-计算一个指派的weight_sum
-x: 一个指派, 一个n维的向量,取值为0或1
-A: 一个n*n的矩阵, A[i,j]表示x[i]和x[j]在指派相同的时候的权重
-B: 一个n*n的矩阵, B[i,j]表示x[i]和x[j]在指派不同的时候的权重
+x: binary assignment vector of length n
+A: n*n same-assignment weight matrix
+B: n*n different-assignment weight matrix
 return: weight_sum
 '''
 def cal_loss(x,A,B):
