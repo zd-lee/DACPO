@@ -584,6 +584,7 @@ namespace GRAPH_IPSR {
 		}
 
 		REAL _normalize_weight(REAL weight) {
+			if (_max_weight == _min_weight) return REAL(0.5);
 			REAL w =  (weight - _min_weight) / (_max_weight - _min_weight);
 			assert(w >= 0 && w <= 1);
 			return w;

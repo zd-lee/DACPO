@@ -538,6 +538,8 @@ public:
     double cal_consistency(const MESH& mesh, std::vector<double>& consistencies,
         std::string path = "", std::vector<int> tri_type = std::vector<int>()
         ){
+        // No triangles means no evidence for either relative orientation.
+        if (mesh.second.empty()) return 0.0;
         assert(tri_type.size() == mesh.second.size());
         double sum_consistency = 0;
         std::vector<Rasterlization::Triangle> triangles;
