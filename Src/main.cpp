@@ -284,7 +284,7 @@ void betweenness(const string& input_name, const string& output_path, int iters,
 int main(int argc, char *argv[])
 {
 	string input_name;
-	int iters = 30;
+	int iters = 10;
 	double pointweight = 10;
 	int depth = 10;
 	int k_neighbors = 10;

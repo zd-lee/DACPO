@@ -3,6 +3,7 @@
 #include <queue>
 #include <graph_arg.h>
 #include <socket_api.h>
+#include <stdexcept>
 
 using namespace graph_arg;
 
@@ -729,38 +730,41 @@ std::vector<bool> graph_arg::MIQPFlip::flip(FlipableGraph* g)
         data[i+w.size()] = inv_w[i];
     }
 
-    lzd_tools::Socket* socket = new lzd_tools::Socket(_ip,_port);
-    assert(socket->connectToServer());
+    lzd_tools::Socket socket(_ip, _port);
+    if (!socket.connectToServer()) {
+        throw std::runtime_error("Cannot connect to the optimization service at " +
+            _ip + ":" + std::to_string(_port));
+    }
 
     nlohmann::json request;
     request["function_name"] = "MIQP";
     request["data_size"] = data.size();
-    if (!socket->SendJson(request.dump())) {
-        assert(false);
-        std::cerr << "Failed to send request" << std::endl;
-        return std::vector<bool>(g->_nodes.size());
+    if (!socket.SendJson(request.dump())) {
+        throw std::runtime_error("Failed to send optimization request");
     }
     std::string response_buff;
     nlohmann::json response;
 
-    if (!socket->ReceiveJson(response_buff)) {
-        assert(false);
-        std::cerr << "Failed to receive response" << std::endl;
-        return std::vector<bool>(g->_nodes.size());
+    if (!socket.ReceiveJson(response_buff)) {
+        throw std::runtime_error("Failed to receive optimization acknowledgement");
     }
     response = nlohmann::json::parse(response_buff);
     if (response["status"] != "OK") {
-        assert(false);
-        std::cerr << "Error: " << response["error"] << std::endl;
-        return std::vector<bool>(g->_nodes.size());
+        throw std::runtime_error("Optimization service rejected request: " + response.dump());
     }
 
-    socket->SendDoubleArray(data);
+    if (!socket.SendDoubleArray(data)) {
+        throw std::runtime_error("Failed to send optimization costs");
+    }
     std::vector<int32_t> res(g->_nodes.size());
-    socket->ReceiveIntArray(res, g->_nodes.size());
-    delete socket;
+    if (!socket.ReceiveIntArray(res, g->_nodes.size())) {
+        throw std::runtime_error("Incomplete optimization result; check the service log");
+    }
     std::vector<bool> flip_res(g->_nodes.size(),false);
     for(int i = 0;i<res.size();i++){
+        if (res[i] != 0 && res[i] != 1) {
+            throw std::runtime_error("Optimization service returned a non-binary label");
+        }
         flip_res[i] = res[i] == 1;
     }
     g->apply_flip(flip_res);

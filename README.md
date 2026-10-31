@@ -97,27 +97,30 @@ src/include/3dparty
 ```
 
 #### 0-1 Integer Optimization API
-Since DACPO uses gurobi to solve the 0-1 integer optimization problem, you need to start a gurobi service before running the code.
+The experiments in the paper use Gurobi for the 0-1 integer optimization step.
+For easier use and reproduction without a commercial solver, we also provide an
+OR-Tools CP-SAT implementation that solves the same DACPO objective.
+
+To use the CP-SAT service:
+
+```bash
+pip install -r graphical_model/requirements-solver.txt
+python graphical_model/socket_server_para.py
 ```
-cd graphical_model
-pip install -r requirements.txt
-python socket_server_para.py
-```
-If you see the following prompt, the gurobi service is running.
-```
-start comb server
-Server listening on 0.0.0.0:11111
-```
+
+The service prints `DACPO CP-SAT listening on 127.0.0.1:11111`. Solver failures
+and solutions without a proof of optimality are rejected by default.
 
 
 
 
 
 ### Usage
->Note: Before running the code, you need to start the gurobi service following the instructions in the [0-1 Integer Optimization API](#0-1-integer-optimization-api) section.
+>Note: Start a compatible 0-1 integer optimization service before running DACPO.
+>The CP-SAT service above is provided for convenience.
 
 ```
-{Path to DACPO.exe} --in {scene name} --iters 0 --depth 10 --neighbors 10 --seed 10 --input_data_root {Path to your scene folder} --ipsr_type 2 --config_folder {Path to conf}
+{Path to DACPO.exe} --in {scene name} --iters 10 --depth 10 --neighbors 10 --seed 10 --input_data_root {Path to your scene folder} --ipsr_type 2 --config_folder {Path to conf}
 ```
 Example:
 ```bash

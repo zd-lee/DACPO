@@ -1,6 +1,9 @@
 #include "socket_api.h"
 
+#include <algorithm>
 #include <cerrno>
+#include <limits>
+#include <nlohmann/json.hpp>
 
 namespace {
 int socket_last_error() {
@@ -17,6 +20,34 @@ void close_socket(SOCKET sock) {
 #else
     close(sock);
 #endif
+}
+
+bool send_all(SOCKET sock, const char* data, size_t size) {
+    size_t sent = 0;
+    while (sent < size) {
+        const int chunk = static_cast<int>((std::min)(size - sent,
+            static_cast<size_t>((std::numeric_limits<int>::max)())));
+#if defined(__linux__)
+        const int count = send(sock, data + sent, chunk, MSG_NOSIGNAL);
+#else
+        const int count = send(sock, data + sent, chunk, 0);
+#endif
+        if (count <= 0) return false;
+        sent += count;
+    }
+    return true;
+}
+
+bool receive_all(SOCKET sock, char* data, size_t size) {
+    size_t received = 0;
+    while (received < size) {
+        const int chunk = static_cast<int>((std::min)(size - received,
+            static_cast<size_t>((std::numeric_limits<int>::max)())));
+        const int count = recv(sock, data + received, chunk, 0);
+        if (count <= 0) return false;
+        received += count;
+    }
+    return true;
 }
 }
 
@@ -73,18 +104,7 @@ bool lzd_tools::Socket::connectToServer() {
 }
 
 bool lzd_tools::Socket::SendDoubleArray(const std::vector<double>& data) {
-    int byteSent = 0;
-    while(byteSent < data.size() * sizeof(double)) {
-		int bytesSent = send(sock, reinterpret_cast<const char*>(data.data()) + byteSent, data.size() * sizeof(double) - byteSent, 0);
-		if (bytesSent == SOCKET_ERROR) {
-			std::cerr << "Send failed: " << socket_last_error() << std::endl;
-			return false;
-        }
-        else {
-        }
-		byteSent += bytesSent;
-	}
-    return true;
+    return send_all(sock, reinterpret_cast<const char*>(data.data()), data.size() * sizeof(double));
 }
 
 bool lzd_tools::Socket::ReceiveDoubleArray(std::vector<double>& data, size_t expectedSize) {
@@ -100,33 +120,23 @@ bool lzd_tools::Socket::ReceiveDoubleArray(std::vector<double>& data, size_t exp
 bool lzd_tools::Socket::ReceiveIntArray(std::vector<int> &data, size_t expectedSize)
 {
     data.resize(expectedSize);
-    int bytesRead = recv(sock, reinterpret_cast<char*>(data.data()), expectedSize * sizeof(int), 0);
-    if (bytesRead == SOCKET_ERROR) {
-        std::cerr << "Receive failed: " << socket_last_error() << std::endl;
-        return false;
-    }
-    return true;
+    return receive_all(sock, reinterpret_cast<char*>(data.data()), expectedSize * sizeof(int));
 }
 
 bool lzd_tools::Socket::SendJson(std::string json)
 {
-	int bytesSent = send(sock, json.c_str(), json.size(), 0);
-	if (bytesSent == SOCKET_ERROR) {
-		std::cerr << "Send failed: " << socket_last_error() << std::endl;
-		return false;
-	}
-	return true;
+    return send_all(sock, json.data(), json.size());
 }
 
 bool lzd_tools::Socket::ReceiveJson(std::string& json)
 {
     json.clear();
     char buffer[1024];
-	int bytesRead = recv(sock, buffer, 1024, 0);
-	if (bytesRead == SOCKET_ERROR) {
-		std::cerr << "Receive failed: " << socket_last_error() << std::endl;
-		return false;
-	}
-	json = std::string(buffer, bytesRead);
-	return true;
+    while (json.size() < 1024 * 1024) {
+        const int count = recv(sock, buffer, sizeof(buffer), 0);
+        if (count <= 0) return false;
+        json.append(buffer, count);
+        if (nlohmann::json::accept(json)) return true;
+    }
+    return false;
 }
